@@ -53,7 +53,21 @@ def official_evaluator():
     assert spec_ and spec_.loader
     module = importlib.util.module_from_spec(spec_)
     sys.modules["_official_evaluate"] = module
-    spec_.loader.exec_module(module)
+    try:
+        spec_.loader.exec_module(module)
+    except ImportError as exc:
+        # Importing the evaluator pulls in *its* dependencies, not ours. When one
+        # is absent this otherwise surfaces as dozens of identical tracebacks
+        # across every test that touches the fixture, which buries the one fact
+        # that matters. `requests` is the usual culprit -- it is imported at the
+        # evaluator's module top level even with the judge disabled.
+        raise RuntimeError(
+            f"the official evaluator needs a package that is not installed: {exc.name!r}.\n"
+            f"Its dependencies are listed in "
+            f"refs/challenge/evaluation/docker/requirements.txt; the ones needed with "
+            f"USE_RATIONALE_JUDGE=0 belong in this project's `dev` extra.\n"
+            f"Try: pip install -e '.[dev]'"
+        ) from exc
     return module
 
 

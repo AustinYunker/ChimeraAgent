@@ -14,7 +14,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# The suite imports and subprocesses the official evaluation/evaluate.py, so it
+# needs that script's own runtime dependencies too. `requests` is imported at
+# its module top level and is therefore required even with the rationale judge
+# disabled; `deepeval` and `ollama` are imported lazily inside the judge path
+# and are deliberately not installed, since we always score with
+# USE_RATIONALE_JUDGE=0. None of this reaches the submission image, which
+# installs with --no-deps.
+dev = ["pytest", "requests>=2.31.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
