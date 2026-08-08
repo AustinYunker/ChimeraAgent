@@ -29,7 +29,7 @@ where = ["src"]
 # The fitted prior ships inside the submission container, so it must land in the
 # wheel rather than only existing in the source checkout.
 [tool.setuptools.package-data]
-"chimera.predictors" = ["prior_params.json"]
+"chimera.predictors" = ["prior_params.json", "guideline_params.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

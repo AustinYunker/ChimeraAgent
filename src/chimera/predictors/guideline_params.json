@@ -1,0 +1,183 @@
+{
+  "_comment": "Fitted by chimera.cli.fit_models. Do not hand-edit; re-run the fit. leaf_labels map guideline strata to decisions and were chosen against the official ranking metric, not accuracy. cv_* are repeated pooled out-of-fold estimates; cv_sd is the spread across split seeds and a difference smaller than it is not evidence.",
+  "task1": {
+    "available_sections": [
+      "radiology_report",
+      "laboratory_results",
+      "psa_trend",
+      "previous_notes",
+      "family_history"
+    ],
+    "cv_baseline_constant": 0.6352475996225997,
+    "cv_beats_baseline_beyond_noise": false,
+    "cv_score": 0.6556798870481682,
+    "cv_sd": 0.02285572233446575,
+    "leaf_labels": {
+      "naive_pirads_high": "yes",
+      "naive_pirads_low": "no",
+      "naive_pirads_unknown": "no",
+      "prior_positive": "yes"
+    },
+    "n_labeled": 91,
+    "reasoning": {
+      "__default__": {
+        "confidence": "clear",
+        "reveal_sequence": [
+          "radiology_report"
+        ],
+        "variable_weights": {
+          "age": "important",
+          "bx": "important",
+          "comorbidity": "noted",
+          "cspca": "noted",
+          "dre": "not_used",
+          "fh": "not_used",
+          "pirads": "important",
+          "psa": "important",
+          "psad": "noted",
+          "vol": "noted"
+        }
+      },
+      "no": {
+        "confidence": "clear",
+        "reveal_sequence": [
+          "radiology_report",
+          "laboratory_results",
+          "psa_trend",
+          "previous_notes"
+        ],
+        "variable_weights": {
+          "age": "important",
+          "bx": "important",
+          "comorbidity": "noted",
+          "cspca": "not_used",
+          "dre": "noted",
+          "fh": "not_used",
+          "pirads": "important",
+          "psa": "important",
+          "psad": "noted",
+          "vol": "noted"
+        }
+      },
+      "yes": {
+        "confidence": "clear",
+        "reveal_sequence": [
+          "radiology_report"
+        ],
+        "variable_weights": {
+          "age": "important",
+          "bx": "not_used",
+          "comorbidity": "noted",
+          "cspca": "not_used",
+          "dre": "not_used",
+          "fh": "not_used",
+          "pirads": "decisive",
+          "psa": "important",
+          "psad": "noted",
+          "vol": "noted"
+        }
+      }
+    }
+  },
+  "task2": {
+    "available_sections": [
+      "radiology_report",
+      "laboratory_results",
+      "psa_trend",
+      "pathology_report",
+      "previous_notes",
+      "family_history"
+    ],
+    "cv_baseline_constant": 0.27328243404649993,
+    "cv_beats_baseline_beyond_noise": true,
+    "cv_score": 0.7082660171712148,
+    "cv_sd": 0.001531874175847382,
+    "leaf_labels": {
+      "positive_high": "active_treatment",
+      "positive_intermediate": "active_treatment",
+      "positive_low": "active_surveillance",
+      "prior_negative": "continued_surveillance",
+      "unknown": "active_treatment"
+    },
+    "n_labeled": 72,
+    "reasoning": {
+      "__default__": {
+        "confidence": "clear",
+        "reveal_sequence": [],
+        "variable_weights": {
+          "age": "important",
+          "bx_gl_prim": "not_used",
+          "bx_gl_sec": "not_used",
+          "bx_isup": "not_used",
+          "comorbidity": "noted",
+          "cspca": "not_used",
+          "ct": "not_used",
+          "fh": "not_used",
+          "pirads": "not_used",
+          "psa": "important",
+          "psad": "not_used"
+        }
+      },
+      "active_surveillance": {
+        "confidence": "clear",
+        "reveal_sequence": [],
+        "variable_weights": {
+          "age": "important",
+          "bx_gl_prim": "not_used",
+          "bx_gl_sec": "not_used",
+          "bx_isup": "not_used",
+          "comorbidity": "important",
+          "cspca": "not_used",
+          "ct": "not_used",
+          "fh": "not_used",
+          "pirads": "not_used",
+          "psa": "important",
+          "psad": "not_used"
+        }
+      },
+      "active_treatment": {
+        "confidence": "clear",
+        "reveal_sequence": [],
+        "variable_weights": {
+          "age": "important",
+          "bx_gl_prim": "not_used",
+          "bx_gl_sec": "not_used",
+          "bx_isup": "not_used",
+          "comorbidity": "noted",
+          "cspca": "not_used",
+          "ct": "not_used",
+          "fh": "not_used",
+          "pirads": "not_used",
+          "psa": "important",
+          "psad": "not_used"
+        }
+      },
+      "continued_surveillance": {
+        "confidence": "clear",
+        "reveal_sequence": [],
+        "variable_weights": {
+          "age": "important",
+          "bx_gl_prim": "not_used",
+          "bx_gl_sec": "not_used",
+          "bx_isup": "not_used",
+          "comorbidity": "noted",
+          "cspca": "not_used",
+          "ct": "not_used",
+          "fh": "not_used",
+          "pirads": "not_used",
+          "psa": "important",
+          "psad": "not_used"
+        }
+      }
+    }
+  },
+  "task3": {
+    "cv_score": 0.7371681415929203,
+    "cv_sd": 0.0,
+    "fitted": false,
+    "model": "capra_s",
+    "months_at_zero_risk": 120.0,
+    "months_per_capra_point": 8.0,
+    "n_labeled": 75
+  }
+}

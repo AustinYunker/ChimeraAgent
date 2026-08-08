@@ -31,7 +31,7 @@ from pathlib import Path
 from chimera.contract.io import read_case, socket_paths, write_case_outputs
 from chimera.contract.io import detect_task
 from chimera.contract.types import Prediction
-from chimera.predictors import ConstantPredictor, PriorPredictor
+from chimera.predictors import ConstantPredictor, GuidelinePredictor
 
 INPUT_PATH = Path(os.environ.get("CHIMERA_INPUT", "/input"))
 OUTPUT_PATH = Path(os.environ.get("CHIMERA_OUTPUT", "/output"))
@@ -96,7 +96,7 @@ def run() -> int:
 
     try:
         case = read_case(INPUT_PATH)
-        prediction = PriorPredictor().predict(case)
+        prediction = GuidelinePredictor().predict(case)
         log.info("case_id          : %s", case.case_id)
     except Exception:
         log.exception("prediction failed; falling back to the constant predictor")

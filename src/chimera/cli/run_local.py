@@ -22,13 +22,19 @@ from pathlib import Path
 from chimera.contract.aggregate import job_pk, write_predictions_dump
 from chimera.contract.io import CaseInputs, read_case, write_case_outputs
 from chimera.contract.types import Prediction
-from chimera.predictors import ConstantPredictor, Predictor, PriorPredictor
+from chimera.predictors import (
+    ConstantPredictor,
+    GuidelinePredictor,
+    Predictor,
+    PriorPredictor,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 PREDICTORS: dict[str, type[Predictor]] = {
     "constant": ConstantPredictor,
     "prior": PriorPredictor,
+    "guideline": GuidelinePredictor,
 }
 
 

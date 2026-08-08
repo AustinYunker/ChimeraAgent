@@ -256,3 +256,94 @@ def test_check_case_rejects_an_out_of_vocabulary_decision(tmp_path):
 def test_check_case_reports_a_missing_socket(tmp_path):
     problems = check_case(tmp_path, 1)
     assert problems and "missing result socket" in problems[0]
+
+
+# --------------------------------------------------------------------------- #
+# The C2 guideline predictor -- what the container now actually ships
+# --------------------------------------------------------------------------- #
+
+def test_guideline_params_are_well_formed():
+    from chimera.models.guidelines import LEAVES_BY_TASK
+    from chimera.predictors.guideline import GuidelinePredictor
+
+    params = GuidelinePredictor().params
+    for task in (1, 2):
+        entry = params[f"task{task}"]
+        allowed = spec.BIOPSY_DECISIONS if task == 1 else spec.TREATMENT_DECISIONS
+        labels = entry["leaf_labels"]
+        # Every guideline leaf must have a label; an unmapped leaf would fall back
+        # to an arbitrary one at inference.
+        assert set(labels) == set(LEAVES_BY_TASK[task])
+        assert set(labels.values()) <= set(allowed)
+        for reasoning in entry["reasoning"].values():
+            assert reasoning["confidence"] in spec.CONFIDENCE_LEVELS
+            assert set(reasoning["reveal_sequence"]) <= set(spec.REVEAL_SECTIONS)
+
+
+@pytest.mark.parametrize("task", [1, 2, 3])
+def test_guideline_output_passes_contract_validation(task):
+    from chimera.predictors.guideline import GuidelinePredictor
+
+    sections = {s: "content" for s in spec.REVEAL_SECTIONS}
+    validate(GuidelinePredictor().predict(_case(task, sections)))
+
+
+def test_guideline_routes_by_stratum_not_by_a_constant():
+    """The whole point of C2: two cases in different strata get different answers."""
+    from chimera.predictors.guideline import GuidelinePredictor
+
+    predictor = GuidelinePredictor()
+    low = CaseInputs(
+        task=2, case_id="low",
+        structured_prompt={"bx": "Negative", "bx_isup": 1, "psa": 5.0, "ct": "cT1c"},
+        clinical_data={}, neural_representations={},
+    )
+    high = CaseInputs(
+        task=2, case_id="high",
+        structured_prompt={"bx": "Positive", "bx_isup": 5, "psa": 30.0, "ct": "cT3a"},
+        clinical_data={}, neural_representations={},
+    )
+    assert predictor.predict(low).decision == "continued_surveillance"
+    assert predictor.predict(high).decision == "active_treatment"
+
+
+def test_guideline_task3_orders_by_risk():
+    """Only the ordering of predicted months reaches the C-index."""
+    from chimera.predictors.guideline import GuidelinePredictor
+
+    benign = CaseInputs(
+        task=3, case_id="b", structured_prompt={"psa": 4.0},
+        clinical_data={"surgical_pathology_report":
+                       "Gleason 3+3 (ISUP grade group 1). There was no extraprostatic "
+                       "extension; surgical margins were negative; the seminal vesicles "
+                       "were not invaded; there was no lymph node metastasis."},
+        neural_representations={},
+    )
+    severe = CaseInputs(
+        task=3, case_id="s", structured_prompt={"psa": 40.0},
+        clinical_data={"surgical_pathology_report": SURGICAL_FOR_TEST},
+        neural_representations={},
+    )
+    b = GuidelinePredictor().predict(benign)
+    s = GuidelinePredictor().predict(severe)
+    # Shorter predicted time = higher risk.
+    assert s.months_to_recurrence < b.months_to_recurrence
+    validate(b)
+    validate(s)
+
+
+SURGICAL_FOR_TEST = (
+    "The prostatectomy specimen showed Gleason 4+5 (ISUP grade group 5), pathological "
+    "stage pT3b. Extraprostatic extension was present; surgical margins were positive; "
+    "the seminal vesicles were invaded; lymphovascular invasion was present; lymph node "
+    "metastasis was present."
+)
+
+
+def test_guideline_degrades_to_a_valid_prediction_with_no_features():
+    """A case with nothing readable must still produce a scoreable submission."""
+    from chimera.predictors.guideline import GuidelinePredictor
+
+    predictor = GuidelinePredictor()
+    for task in (1, 2, 3):
+        validate(predictor.predict(_case(task, {})))

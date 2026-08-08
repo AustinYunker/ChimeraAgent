@@ -37,26 +37,45 @@ subprocess per fold. Agreement is asserted to 1e-9 at two levels:
 python -m chimera.cli.score_fast --run work/run/constant --compare  # + diff
 ```
 
-**C1b — submission container: ready to build.** The released training data is in
-hand (195 / 153 / 75 cases, 91 / 72 / 75 labeled), and the submission payload is
-a *fitted* constant prior rather than an arbitrary one:
-`chimera.cli.fit_prior` enumerates decision × confidence × weight vector × all
-reveal subsets and takes the argmax of the official ranking metric, then
-hill-climbs the weight vector. Scored by the **official evaluator** on the real
-labels:
+**C1b — submission container: built and smoke-tested.** The image builds in CI,
+runs offline under Grand Challenge's mounts, and every output passes the
+evaluator's schema gate. Payload was a *fitted* constant prior, superseded by C2
+below.
 
-| Task | `ranking_score` | 5-fold CV | Constant-predictor floor |
-|---|---|---|---|
-| 1 | **0.635** | 0.634 | 0.569 |
-| 2 | **0.292** | 0.298 | 0.444 † |
-| 3 | 0.500 | — | 0.500 |
+**C2 — decision models: complete.** Guideline strata with **metric-fitted leaf
+labels**: the partition comes from clinical knowledge, and each leaf's decision is
+chosen by maximising the official ranking score — not accuracy, which is a
+different objective. Task 3 uses **CAPRA-S**, a published post-prostatectomy
+nomogram, with nothing fitted at all.
 
-† not comparable — the 0.444 floor is on 3 fixture cases, the 0.292 on 72 real ones.
+Scored by the **official evaluator** on the real labels, with repeated pooled
+out-of-fold cross-validation alongside:
 
-Worth reading off the component breakdown: mean tool score is 0.98 / 1.00 and
-section grounding 1.00 / 1.00, so the *reasoning* side is already at ceiling for
-a constant. All remaining headroom on Tasks 1 and 2 is in the decision gate,
-which passes on only 61.5% / 43.1% of cases. That is what C2 has to move.
+| Task | C1b prior | C2 | CV (5×5) | constant baseline (CV) |
+|---|---|---|---|---|
+| 1 | 0.635 | 0.686 | 0.656 ± 0.023 | 0.635 ± 0.000 |
+| 2 | 0.292 | **0.713** | **0.708 ± 0.002** | 0.273 ± 0.038 |
+| 3 | 0.500 | **0.737** | 0.737 (nothing fitted) | 0.500 |
+
+**Task 1's gain is not established.** +0.021 against a split-to-split spread of
+0.023 is inside the noise, exactly as its near-chance univariate AUCs predicted
+(`pirads` 0.608, `cspca` 0.577). The model is kept because it is the same code
+path and its point estimate is no worse, not because it is known to help.
+
+Two findings drove the two real wins:
+
+- **Task 2 is a two-stage decision, not a flat four-way choice.** Prior biopsy
+  result separates `continued_surveillance` almost perfectly (13 of 14 negative
+  biopsies), and EAU risk then splits the rest — `positive_high` is 12/12
+  `active_treatment`. Gate pass went 0.431 → 0.806.
+- **Task 3's reports are templated**, so every surgical-pathology field CAPRA-S
+  needs parses at 100%: grade, stage, margins, EPE, SVI, and nodal status with
+  pNx correctly distinguished from pN0.
+
+One detail worth keeping: Task 1's `prior_positive` leaf is labelled `yes`
+although its training majority is `no` (26/23). The `F1_yes` term in the metric
+makes that the better answer — a model fitted to accuracy would have chosen
+otherwise.
 
 The image cannot be built or run here — no Docker, and rootless podman is
 unavailable — so it is built **and smoke-tested** in GitHub Actions:
@@ -153,14 +172,22 @@ src/chimera/
                types.py — typed predictions + pre-write validation
                io.py — GC socket reader / writer
                aggregate.py — rebuilds predictions.json for the evaluator
+  evidence/    structured.py — the patient card, typed; reports.py — templated
+               report parsing. Both take a CaseInputs, so training and serving
+               compute features through the same code.
+  models/      guidelines.py — CAPRA-S, EAU risk, the Task 1 partition
+               stratified.py — leaf-label and reasoning fitting
+  eval/        cv.py — repeated pooled out-of-fold CV (dev only, not shipped)
   predictors/  base.py — the one-method Predictor protocol
                constant.py — the C0 floor
                prior.py + prior_params.json — the fitted C1b payload
+               guideline.py + guideline_params.json — the C2 payload
   scoring/     fast.py — judge-free transcription of the official scorer
                records.py — the flat record shape both scorers compare on,
                             plus the inverse of the predictions.json writer
   cli/         make_fixtures · make_synthetic_cohort · make_release_cases ·
-               run_local · score_fast · fit_prior · check_outputs
+               run_local · score_fast · fit_prior · fit_models ·
+               cross_validate · check_outputs
 tests/         contract conformance · spec-vs-evaluator agreement ·
                scorer parity (in-memory) · run-directory parity (through files) ·
                entrypoint + prior + stdlib-only import closure

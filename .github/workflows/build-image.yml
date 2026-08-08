@@ -55,16 +55,26 @@ jobs:
       - name: Smoke-test the image
         run: scripts/smoke_test_image.sh "${IMAGE_TAG}" work/fixtures work/smoke
 
-      # The prior ships as package data; if packaging ever drops it the
-      # predictor would silently fall back to defaults rather than fail.
-      - name: Assert the fitted prior is inside the image
+      # Both parameter files ship as package data. If packaging ever drops one the
+      # predictor degrades to defaults silently rather than failing, so assert the
+      # actual fitted values are present and reachable from inside the image.
+      - name: Assert the fitted models are inside the image
         run: |
           docker run --rm --network none --entrypoint python3 "${IMAGE_TAG}" -c "
           from chimera.predictors.prior import load_params
-          p = load_params()
-          assert p['task1']['reveal_sequence'] == ['radiology_report'], p['task1']
-          assert p['task2']['reveal_sequence'] == [], p['task2']
-          print('prior loaded from the image:', sorted(k for k in p if k.startswith('task')))
+          from chimera.predictors.guideline import GuidelinePredictor
+
+          prior = load_params()
+          assert prior['task1']['reveal_sequence'] == ['radiology_report'], prior['task1']
+          assert prior['task2']['reveal_sequence'] == [], prior['task2']
+
+          g = GuidelinePredictor().params
+          leaves1 = g['task1']['leaf_labels']
+          leaves2 = g['task2']['leaf_labels']
+          assert leaves1['naive_pirads_high'] == 'yes', leaves1
+          assert leaves2['prior_negative'] == 'continued_surveillance', leaves2
+          assert leaves2['positive_high'] == 'active_treatment', leaves2
+          print('guideline leaves in image:', sorted(leaves1), sorted(leaves2))
           "
 
       - name: Save the image
