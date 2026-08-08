@@ -1,0 +1,44 @@
+name: ci
+
+# The suite is only meaningful with the reference repos present: the parity
+# tests import the official evaluate.py and run it as a subprocess, and the
+# fixture cohort is generated from the challenge ground truth. Without refs/
+# most of it would skip rather than fail, so CI clones them explicitly and then
+# asserts nothing skipped.
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      - name: Clone reference repos
+        run: |
+          git clone --depth 1 https://github.com/DIAGNijmegen/chimera-agent-baseline refs/baseline
+          git clone --depth 1 https://github.com/DIAGNijmegen/CHIMERA-agent          refs/challenge
+
+      - name: Build cohorts
+        run: |
+          python -m chimera.cli.make_fixtures
+          python -m chimera.cli.make_synthetic_cohort
+
+      # CHIMERA_REQUIRE_REFS turns any skip into a failure (see tests/conftest.py).
+      # A green run that silently skipped the parity tests is worse than a red one.
+      - name: Test
+        env:
+          CHIMERA_REQUIRE_REFS: "1"
+        run: pytest -q -rs --strict-markers

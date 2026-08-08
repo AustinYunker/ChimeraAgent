@@ -1,0 +1,35 @@
+CHIMERA-agent challenge entry (MICCAI 2026)
+Copyright 2026 Austin M Yunker
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+
+Third-party material
+--------------------
+
+This repository contains no third-party code.
+
+The reference repositories DIAGNijmegen/chimera-agent-baseline and
+DIAGNijmegen/CHIMERA-agent are cloned into `refs/` for local development and are
+never vendored; `refs/` is gitignored and no code is copied from it. As of
+August 2026 neither repository carries a license, so no redistribution rights
+are granted for their contents. Everything in `src/` is an independent
+implementation written against the published challenge I/O contract — socket
+slugs, filenames, and enumerated vocabularies are factual interface details, not
+expression copied from those repositories.
+
+Challenge data under `data/` is provided by the challenge organizers under their
+own terms, is not redistributable, and is gitignored.
+
+Any model weights bundled into or downloaded by the submission container remain
+subject to their own upstream licenses, which are independent of this project's
+Apache-2.0 grant. Record them here when they are added.

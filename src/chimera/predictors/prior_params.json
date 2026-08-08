@@ -1,0 +1,74 @@
+{
+  "_comment": "Fitted by chimera.cli.fit_prior against the released training labels. Do not hand-edit; re-run the fit instead. in_sample_score is the selection objective and is optimistic; cv_score estimates the fit-then-predict procedure on unseen cases.",
+  "task1": {
+    "available_sections": [
+      "radiology_report",
+      "laboratory_results",
+      "psa_trend",
+      "previous_notes",
+      "family_history"
+    ],
+    "confidence": "clear",
+    "cv_score": 0.633953,
+    "decision": "yes",
+    "in_sample_score": 0.635248,
+    "n_labeled": 91,
+    "reveal_sequence": [
+      "radiology_report"
+    ],
+    "variable_weights": {
+      "age": "important",
+      "bx": "not_used",
+      "comorbidity": "noted",
+      "cspca": "not_used",
+      "dre": "not_used",
+      "fh": "not_used",
+      "pirads": "decisive",
+      "psa": "important",
+      "psad": "noted",
+      "vol": "noted"
+    }
+  },
+  "task2": {
+    "available_sections": [
+      "radiology_report",
+      "laboratory_results",
+      "psa_trend",
+      "pathology_report",
+      "previous_notes",
+      "family_history"
+    ],
+    "confidence": "clear",
+    "cv_score": 0.297901,
+    "decision": "active_treatment",
+    "in_sample_score": 0.292155,
+    "n_labeled": 72,
+    "reveal_sequence": [],
+    "variable_weights": {
+      "age": "important",
+      "bx_gl_prim": "not_used",
+      "bx_gl_sec": "not_used",
+      "bx_isup": "not_used",
+      "comorbidity": "noted",
+      "cspca": "not_used",
+      "ct": "not_used",
+      "fh": "not_used",
+      "pirads": "not_used",
+      "psa": "important",
+      "psad": "not_used"
+    }
+  },
+  "task3": {
+    "available_sections": [
+      "radiology_report",
+      "pathology_report",
+      "previous_notes",
+      "family_history"
+    ],
+    "cv_score": 0.754926,
+    "event": 0,
+    "in_sample_score": 0.754926,
+    "months_to_recurrence": 66.0,
+    "n_labeled": 75
+  }
+}

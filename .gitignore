@@ -1,0 +1,56 @@
+# --- Challenge material we must not redistribute -----------------------------
+# NB: `#` only starts a comment at the start of a line. A trailing comment
+# becomes part of the pattern and silently disables it, so keep them above.
+# Challenge data; redistribution is not permitted.
+data/
+# Reference repos: cloned fresh, never vendored.
+refs/
+
+# --- Generated artefacts -----------------------------------------------------
+# Cohorts, run directories, scores.
+work/
+results/
+*.log
+
+# --- Model weights and container images — far too large for git --------------
+# Weights ship to Grand Challenge as a separate model.tar.gz upload, never in
+# the image and never in git.
+model/**
+!model/README.md
+!model/.gitkeep
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.tar
+*.tar.gz
+*.sif
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Secrets and local environment -------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Editors / OS / agent scratch --------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+.loglogin
+.claude/settings.local.json

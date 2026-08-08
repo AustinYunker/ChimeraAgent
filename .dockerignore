@@ -1,0 +1,14 @@
+# Keep the build context to the few files the image actually needs. Without
+# this, `docker build .` would ship the cohorts in work/, the 29 MB release in
+# data/, and both reference clones in refs/ to the daemon on every build.
+*
+!pyproject.toml
+!LICENSE
+!NOTICE
+!inference.py
+!src/
+
+# Nothing generated, even from inside src/.
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
