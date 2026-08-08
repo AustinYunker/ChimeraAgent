@@ -25,17 +25,29 @@ FIXTURE_ROOT = REPO_ROOT / "work" / "fixtures"
 #: green run that silently skipped them is worse than a red one.
 REQUIRE_EVERYTHING = os.environ.get("CHIMERA_REQUIRE_REFS") == "1"
 
+#: The one legitimate reason to skip in CI. ``data/train_release`` is the released
+#: challenge data: not redistributable, gitignored, and so never present on a
+#: runner. Tests marked with this are exempt from the rule above; everything else
+#: skipping in CI means refs/ or a generated cohort is missing, which is a
+#: misconfiguration and should fail loudly.
+RELEASE_DATA_MARKER = "requires_release_data"
+
 
 def pytest_sessionfinish(session, exitstatus):
-    """Under ``CHIMERA_REQUIRE_REFS=1``, treat any skip as a failure."""
+    """Under ``CHIMERA_REQUIRE_REFS=1``, treat an unexpected skip as a failure."""
     if not REQUIRE_EVERYTHING or exitstatus != 0:
         return
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     skipped = reporter.stats.get("skipped", []) if reporter else []
-    if skipped:
-        print(f"\nCHIMERA_REQUIRE_REFS=1 but {len(skipped)} test(s) skipped:")
-        for report in skipped:
+    unexpected = [r for r in skipped if RELEASE_DATA_MARKER not in r.keywords]
+    if unexpected:
+        print(f"\nCHIMERA_REQUIRE_REFS=1 but {len(unexpected)} test(s) skipped:")
+        for report in unexpected:
             print(f"  {report.nodeid}")
+        print(
+            f"Only tests marked @pytest.mark.{RELEASE_DATA_MARKER} may skip in CI; "
+            "anything else means refs/ or a cohort is missing."
+        )
         session.exitstatus = 1
 
 

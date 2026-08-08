@@ -33,3 +33,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    # Needs data/train_release, which is not redistributable and therefore never
+    # present in CI. CHIMERA_REQUIRE_REFS exempts these from its no-skip rule --
+    # see tests/conftest.py. Everything else must run there.
+    "requires_release_data: needs the released challenge data on disk",
+]

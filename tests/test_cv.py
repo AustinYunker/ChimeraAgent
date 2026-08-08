@@ -161,8 +161,13 @@ def test_splits_survive_a_class_too_rare_to_stratify():
     assert result["n"] == 20
 
 
+@pytest.mark.requires_release_data
 @pytest.mark.parametrize("task", [1, 2, 3])
 def test_load_rows_pairs_real_cases_with_their_labels(task):
+    """Exact cohort sizes, so a silently half-built cohort cannot pass unnoticed.
+
+    Marked: the released data is not redistributable and is never on a CI runner.
+    """
     if not (CASES / f"task{task}").is_dir():
         pytest.skip("release cohort not built; run chimera.cli.make_release_cases")
     rows = load_rows(CASES, GT, task)
