@@ -167,8 +167,32 @@ def eau_risk(features: StructuredFeatures) -> str | None:
 # Strata. Each task's leaves are a small closed set; the label per leaf is fitted.
 # --------------------------------------------------------------------------- #
 
+#: Task 1 stratifies on the MRI alone. Prior-biopsy status *is* available (release
+#: Version 3 dropped it from the patient card, and
+#: :mod:`chimera.evidence.notes` recovers it from the prose at 99.0%), and giving
+#: it its own leaf is the clinically obvious move -- imaging genuinely does not
+#: discriminate in men with known cancer, 21 yes against 22 no at high PI-RADS.
+#: It still loses out of fold, and not marginally:
+#:
+#: ===============================  ========  =======  ================
+#: Task 1 stratification            accuracy  F1(yes)  pooled OOF CV
+#: ===============================  ========  =======  ================
+#: prior_positive as its own leaf      0.692    0.800  0.6482 +/- 0.0224
+#: prior_positive split by PI-RADS         -        -  0.6679 +/- 0.0172
+#: PI-RADS alone (shipped)             0.714    0.806  0.6823 +/- 0.0006
+#: ===============================  ========  =======  ================
+#:
+#: The gap clears the repeated-CV spread that ``docs/plan.md`` sets as the bar for
+#: acting at all, and the near-zero split variance is the tell: with the extra
+#: leaf the fitted labels move from fold to fold, so most of what it buys is
+#: noise. The more expressive six-leaf variant landing *between* the two says the
+#: same thing from the other side.
+#:
+#: What actually changes is six patients -- prior-positive with a low-PI-RADS MRI,
+#: 2 biopsied against 4 not. The extra leaf calls them all `yes`; PI-RADS alone
+#: calls them all `no` and is right twice as often, which is also the defensible
+#: recommendation (known cancer, unremarkable MRI, stay on surveillance).
 TASK1_LEAVES: tuple[str, ...] = (
-    "prior_positive",
     "naive_pirads_high",
     "naive_pirads_low",
     "naive_pirads_unknown",
@@ -189,10 +213,8 @@ PIRADS_POSITIVE = 4
 
 
 def _task1_stratum(features: StructuredFeatures) -> str:
-    if features.prior_biopsy == "positive":
-        # Cancer is already established; whether to re-biopsy is not decided by the
-        # imaging, empirically. One leaf, label chosen by the metric.
-        return "prior_positive"
+    """PI-RADS alone. Prior-biopsy status is deliberately not consulted -- see
+    :data:`TASK1_LEAVES` for the measurement that decided it."""
     if features.pirads is None:
         return "naive_pirads_unknown"
     return "naive_pirads_high" if features.pirads >= PIRADS_POSITIVE else "naive_pirads_low"
@@ -224,8 +246,11 @@ def describe(task: int, features: StructuredFeatures) -> dict[str, Any]:
     out: dict[str, Any] = {"stratum": leaf}
     if task == 2:
         out["eau_risk"] = eau_risk(features)
-    if features.prior_biopsy is not None:
-        out["prior_biopsy"] = features.prior_biopsy
+        # Only Task 2 branches on it, so only Task 2 may cite it as the basis.
+        # Naming a fact the decision did not use would make the rationale
+        # describe a path we did not take.
+        if features.prior_biopsy is not None:
+            out["prior_biopsy"] = features.prior_biopsy
     if features.pirads is not None:
         out["pirads"] = features.pirads
     return out

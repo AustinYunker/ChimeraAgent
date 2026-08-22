@@ -22,6 +22,7 @@ from dataclasses import dataclass, fields
 from typing import Any
 
 from chimera.contract.io import CaseInputs
+from chimera.evidence.notes import prior_biopsy_from_notes
 
 #: Clinical T stage, ordered. `cTx` means "not assessable" and is not a stage, so it
 #: maps to ``None`` rather than to a low value -- treating unknown as early-stage
@@ -42,6 +43,17 @@ _DRE_ABNORMAL = frozenset({"nodus", "abnormal", "suspicious"})
 #: Observed prior-biopsy vocabulary. `None` here is the string "None" meaning
 #: "never biopsied", not a missing value -- and it carries real signal.
 _BX_VALUES = frozenset({"positive", "negative", "none"})
+
+#: Tasks whose decision model actually branches on prior-biopsy status, and so may
+#: pay to go looking for it when the patient card omits it.
+#:
+#: Only Task 2 does. Task 3 never used it, and Task 1 dropped it at C2 because
+#: PI-RADS alone stratifies better out of fold (see
+#: :data:`chimera.models.guidelines.TASK1_LEAVES`). The gate is not tidiness: the
+#: evaluator's tool score is *precision* over the declared reveals, so reading a
+#: section costs real points, and a feature no leaf consults is pure cost. One
+#: line to widen if a future release takes ``bx`` off another task's card too.
+_TASKS_USING_PRIOR_BIOPSY = frozenset({2})
 
 
 def as_float(value: Any) -> float | None:
@@ -114,7 +126,13 @@ def dre_abnormal(prompt: dict[str, Any]) -> int | None:
 
 
 def prior_biopsy(prompt: dict[str, Any]) -> str | None:
-    """``positive`` / ``negative`` / ``none``, where ``none`` means never biopsied."""
+    """``positive`` / ``negative`` / ``none``, where ``none`` means never biopsied.
+
+    Release Version 3 removed this key from every Task 1 prompt (Task 2 kept it),
+    so a ``None`` here is now the common case for Task 1 and
+    :func:`chimera.evidence.notes.prior_biopsy_from_notes` takes over --
+    see :func:`extract_structured`.
+    """
     value = prompt.get("bx")
     if not isinstance(value, str):
         return None
@@ -164,13 +182,22 @@ class StructuredFeatures:
     #: Kept as categories rather than numbers; the model one-hots them.
     dre: str | None = None
     prior_biopsy: str | None = None
+    #: Clinical-data sections that had to be *read* to produce these features,
+    #: as opposed to those taken from the patient card. Empty whenever the card
+    #: answered everything. Carried here rather than recomputed downstream so
+    #: the declared ``reveal_sequence`` is derived from the same call that did
+    #: the reading -- see :mod:`chimera.evidence.notes`.
+    evidence_sections: tuple[str, ...] = ()
+
+    #: Not features: excluded from :meth:`numeric` and from the model's inputs.
+    _NON_NUMERIC = ("dre", "prior_biopsy", "evidence_sections")
 
     def numeric(self) -> dict[str, float | None]:
         """Just the orderable fields, for a linear model."""
         return {
             f.name: getattr(self, f.name)
             for f in fields(self)
-            if f.name not in ("dre", "prior_biopsy")
+            if f.name not in self._NON_NUMERIC
         }
 
     def as_dict(self) -> dict[str, Any]:
@@ -178,8 +205,29 @@ class StructuredFeatures:
 
 
 def extract_structured(case: CaseInputs) -> StructuredFeatures:
-    """Read the patient card. Never raises; unreadable fields stay ``None``."""
+    """Read the patient card, falling back to the notes for what it no longer says.
+
+    Never raises; unreadable fields stay ``None``.
+
+    The only fallback is prior-biopsy status, and it fires only when both are true:
+    the card omits ``bx`` entirely, and this task's model actually branches on it
+    (:data:`_TASKS_USING_PRIOR_BIOPSY`). The card wins wherever it speaks -- it is
+    the organizers' own coding.
+
+    On release Version 3 that means the fallback never fires: Task 2 is the only
+    consumer and Task 2's card still carries ``bx`` on all 153 cases. It is there
+    for the test cohort. Version 3 already deleted ``bx`` from all 195 Task 1
+    prompts, and if the same trimming reaches Task 2 then every case collapses
+    into the ``unknown`` leaf and Task 2 -- our strongest task by a wide margin --
+    degrades to a constant. The cost of carrying this guard is zero while the
+    field is present; the cost of not carrying it is the whole task.
+    """
     prompt = case.structured_prompt if isinstance(case.structured_prompt, dict) else {}
+
+    bx = prior_biopsy(prompt)
+    evidence_sections: tuple[str, ...] = ()
+    if bx is None and case.task in _TASKS_USING_PRIOR_BIOPSY:
+        bx, evidence_sections = prior_biopsy_from_notes(case.clinical_data)
 
     return StructuredFeatures(
         age=as_float(prompt.get("age")),
@@ -199,5 +247,6 @@ def extract_structured(case: CaseInputs) -> StructuredFeatures:
         ipss=ipss(prompt),
         comorbidity_count=comorbidity_count(prompt),
         dre=dre(prompt),
-        prior_biopsy=prior_biopsy(prompt),
+        prior_biopsy=bx,
+        evidence_sections=evidence_sections,
     )

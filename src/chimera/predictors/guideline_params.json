@@ -9,14 +9,13 @@
       "family_history"
     ],
     "cv_baseline_constant": 0.6352475996225997,
-    "cv_beats_baseline_beyond_noise": false,
-    "cv_score": 0.6556798870481682,
-    "cv_sd": 0.02285572233446575,
+    "cv_beats_baseline_beyond_noise": true,
+    "cv_score": 0.6900123071373072,
+    "cv_sd": 0.0001740408647355631,
     "leaf_labels": {
       "naive_pirads_high": "yes",
       "naive_pirads_low": "no",
-      "naive_pirads_unknown": "no",
-      "prior_positive": "yes"
+      "naive_pirads_unknown": "no"
     },
     "n_labeled": 91,
     "reasoning": {

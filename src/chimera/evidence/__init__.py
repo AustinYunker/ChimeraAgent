@@ -13,14 +13,27 @@ Two constraints apply to every extractor in this package:
   250 test cases come from Karolinska with different report templates and scanners,
   and a crashed case is scored against a sentinel label rather than skipped -- so a
   missing feature must cost a little accuracy, never a whole case.
+
+A third constraint applies to :mod:`chimera.evidence.notes`, which reads the
+narrative sections rather than the patient card: whatever it reads has to be
+declared in ``reveal_sequence``, so it reports the sections it consumed and
+:class:`~chimera.evidence.structured.StructuredFeatures` carries them through.
 """
 
+from chimera.evidence.notes import (
+    NOTE_SECTIONS,
+    classify_prior_biopsy,
+    prior_biopsy_from_notes,
+)
 from chimera.evidence.reports import SurgicalPathology, extract_reports
 from chimera.evidence.structured import StructuredFeatures, extract_structured
 
 __all__ = [
+    "NOTE_SECTIONS",
     "StructuredFeatures",
     "SurgicalPathology",
+    "classify_prior_biopsy",
     "extract_reports",
     "extract_structured",
+    "prior_biopsy_from_notes",
 ]

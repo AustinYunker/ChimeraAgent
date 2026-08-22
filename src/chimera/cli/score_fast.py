@@ -7,8 +7,9 @@ Two jobs in one command, deliberately:
   files exactly as ``evaluate.py`` would, then scores them in-process. This is
   the loop C2/C3 will run per fold, without a subprocess or a judge.
 * **Verify.** ``--compare`` additionally loads the official
-  ``<run>/_scores/task<N>/metrics.json`` written by ``scripts/score.sh`` and
-  asserts every shared number agrees to within ``--tol`` (default 1e-9).
+  ``<run>/_scores/metrics.json`` written by ``scripts/score.sh`` -- one file for
+  the whole run, with the aggregates keyed by task id -- and asserts every
+  shared number agrees to within ``--tol`` (default 1e-9).
 
 The comparison is the point. ``tests/test_scorer_parity.py`` drives both scorers
 over in-memory records, which pins the *maths*; this pins the whole path --
@@ -39,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from chimera.scoring.fast import score_cohort_rows
-from chimera.scoring.records import pair_run_with_ground_truth
+from chimera.scoring.records import TASK_KIND, pair_run_with_ground_truth
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_GT_ROOT = REPO_ROOT / "refs" / "challenge" / "evaluation" / "ground_truth"
@@ -155,6 +156,15 @@ def compare_rows(
     return problems
 
 
+def official_metrics_path(run_dir: Path) -> Path:
+    """Where ``scripts/score.sh`` leaves the official ``metrics.json``.
+
+    One file for the whole run since upstream b0ae4eb: the evaluator scores
+    every task in the dump in a single pass and keys its aggregates by task id.
+    """
+    return run_dir / "_scores" / "metrics.json"
+
+
 def score_task(run_dir: Path, gt_root: Path, task: int, tol: float, compare: bool
                ) -> tuple[dict[str, Any], list[str]]:
     """Score one task; return its aggregate and any parity problems found."""
@@ -164,16 +174,31 @@ def score_task(run_dir: Path, gt_root: Path, task: int, tol: float, compare: boo
     if not compare:
         return aggregate, []
 
-    metrics_path = run_dir / "_scores" / f"task{task}" / "metrics.json"
+    metrics_path = official_metrics_path(run_dir)
     if not metrics_path.is_file():
         return aggregate, [
             f"no official metrics at {metrics_path}; run scripts/score.sh first"
         ]
 
     official = json.loads(metrics_path.read_text())
+    task_id = f"task{task}"
+    aggregates = official.get("aggregates", {})
+    if task_id not in aggregates:
+        return aggregate, [
+            f"official metrics at {metrics_path} carry no {task_id} aggregate "
+            f"(saw {sorted(k for k in aggregates if k.startswith('task'))})"
+        ]
+
+    # `results` spans every task in the dump, so select this one's rows by the
+    # evaluator's own `task` field rather than by position.
+    kind = TASK_KIND[task]
+    their_rows = [
+        r for r in official.get("results", []) if r.get("task") == kind
+    ]
+
     problems: list[str] = []
-    _diff(aggregate, official.get("aggregates", {}), tol, "aggregates", problems)
-    problems.extend(compare_rows(rows, official.get("results", []), tol))
+    _diff(aggregate, aggregates[task_id], tol, "aggregates", problems)
+    problems.extend(compare_rows(rows, their_rows, tol))
     return aggregate, problems
 
 

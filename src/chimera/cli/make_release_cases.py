@@ -74,6 +74,17 @@ _LABEL_FILES: dict[int, tuple[str, ...]] = {
     3: ("prostate-time-to-recurrence-or-last-follow-up.json",),
 }
 
+#: Copied into the ground truth as well as the inputs, mirroring
+#: ``CLINICAL_FILENAMES``. Production inputs are file-backed, so the evaluator
+#: no longer finds clinical context inlined on the job and reads this copy
+#: instead; without it the rationale judge is shown an empty context and a
+#: judge-on run diverges from the leaderboard's.
+_CLINICAL_FILE: dict[int, str] = {
+    1: "prostate-biopsy-decision-clinical-data.json",
+    2: "prostate-treatment-decision-clinical-data.json",
+    3: "prostate-time-to-recurrence-or-last-follow-up-clinical-data.json",
+}
+
 
 def build(data_root: Path, out_root: Path) -> dict[int, tuple[int, int]]:
     """Split ``data_root`` into cases and ground truth under ``out_root``.
@@ -130,6 +141,9 @@ def build(data_root: Path, out_root: Path) -> dict[int, tuple[int, int]]:
                 gt_dir.mkdir(parents=True, exist_ok=True)
                 for src in labels:
                     shutil.copyfile(src, gt_dir / src.name)
+                clinical = case_dir / _CLINICAL_FILE[task]
+                if clinical.is_file():
+                    shutil.copyfile(clinical, gt_dir / clinical.name)
                 n_labeled += 1
 
         summary[task] = (n_cases, n_labeled)

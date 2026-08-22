@@ -66,7 +66,17 @@ class GuidelinePredictor(PriorPredictor):
         weights = _normalise_weights(task, reasoning.get("variable_weights"))
 
         policy = reasoning.get("reveal_sequence")
-        retrieved = self.retrieve(case, policy if isinstance(policy, list) else [])
+        policy = list(policy) if isinstance(policy, list) else []
+        # Sections the extractor had to read to reach the decision -- for Task 1
+        # since release Version 3 that is the radiology report and the referral
+        # notes, which is where `bx` now lives. `stratified.fit` forces these into
+        # the fitted policy too, so this is normally a no-op; it matters when the
+        # parameter file predates the change, and reveal honesty runs the wrong
+        # way round (under-declaring what we read) if it is skipped.
+        for section in extract_structured(case).evidence_sections:
+            if section not in policy:
+                policy.append(section)
+        retrieved = self.retrieve(case, policy)
 
         return DecisionPrediction(
             task=task,

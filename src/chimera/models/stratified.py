@@ -198,8 +198,32 @@ def _mean_case_score(task: int, gts: Sequence[dict], reasoning: dict[str, Any]) 
     return total / len(gts) if gts else 0.0
 
 
+def required_reveals(rows: Sequence[Any]) -> list[str]:
+    """Sections the feature extractor reads, so every candidate reveal must name them.
+
+    Since release Version 3 the Task 1 patient card no longer carries ``bx`` and
+    :func:`chimera.evidence.extract_structured` recovers it from the radiology
+    report and the referral notes instead. Reading a section obliges declaring it,
+    so those sections are not optional at serve time -- and if the fit were free to
+    leave them out, it would be optimising a reveal set the container cannot emit.
+
+    Taken as a union over the cohort. On Task 1 that is exact: all 195 cases lack
+    ``bx`` and all 195 carry both sections, so every case reads the same two. Where
+    a cohort is mixed the union slightly overstates the reveal for the minority,
+    which costs a little fidelity in the fit and nothing in honesty -- the serve
+    path declares only what the individual case actually yielded.
+    """
+    from chimera.evidence import extract_structured
+
+    seen: set[str] = set()
+    for row in rows:
+        seen.update(extract_structured(row.case).evidence_sections)
+    return [s for s in spec.REVEAL_SECTIONS if s in seen]
+
+
 def fit_reasoning_group(
-    task: int, gts: Sequence[dict], sections: Sequence[str]
+    task: int, gts: Sequence[dict], sections: Sequence[str],
+    required: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Reasoning constants maximising the mean case score over ``gts``.
 
@@ -210,16 +234,23 @@ def fit_reasoning_group(
     The weight vector and reveal set *are* coupled -- section grounding asks which
     actively-weighted variables were revealed -- so those are searched together and
     then hill-climbed one variable at a time.
+
+    ``required`` sections appear in every candidate reveal set; see
+    :func:`required_reveals`.
     """
     import itertools
 
     from chimera.cli.fit_prior import modal_weights
 
     variables = spec.VARIABLES_BY_TASK[task]
+    # Canonical order, and drawn from `required` rather than from `sections`: a
+    # section we read is declared whether or not the cohort scan happened to list it.
+    forced = [s for s in spec.REVEAL_SECTIONS if s in set(required)]
+    optional = [s for s in sections if s not in set(required)]
     reveal_sets = [
-        list(combo)
-        for size in range(len(sections) + 1)
-        for combo in itertools.combinations(sections, size)
+        forced + list(combo)
+        for size in range(len(optional) + 1)
+        for combo in itertools.combinations(optional, size)
     ]
     strategies = [{v: level for v in variables} for level in spec.WEIGHT_LEVELS]
     strategies.append(modal_weights(list(gts), variables))
@@ -273,16 +304,22 @@ def fit_reasoning_group(
 
 
 def fit_reasoning_by_decision(
-    task: int, rows: Sequence[Any], sections: Sequence[str]
+    task: int, rows: Sequence[Any], sections: Sequence[str],
+    required: Sequence[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Reasoning constants per decision, fitted on the cases that will be gated in.
 
     Falls back to the pooled fit for a decision with too few examples --
     ``watchful_waiting`` has 2 cases in 72 and cannot support its own constants.
+
+    ``required`` defaults to :func:`required_reveals` over ``rows``, so callers get
+    the honest constraint without having to know it exists.
     """
+    if required is None:
+        required = required_reveals(rows)
     gts = [r.gt for r in rows]
     by_decision: dict[str, dict[str, Any]] = {
-        "__default__": fit_reasoning_group(task, gts, sections)
+        "__default__": fit_reasoning_group(task, gts, sections, required)
     }
 
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -294,7 +331,7 @@ def fit_reasoning_by_decision(
     for decision, subset in groups.items():
         if len(subset) < MIN_ROWS_FOR_CONDITIONAL_FIT:
             continue
-        by_decision[decision] = fit_reasoning_group(task, subset, sections)
+        by_decision[decision] = fit_reasoning_group(task, subset, sections, required)
     return by_decision
 
 
@@ -306,9 +343,15 @@ def fit(task: int, rows: Sequence[Any], sections: list[str]) -> dict[str, Any]:
     first. The pooled constants are used while searching labels; the conditional ones
     are applied at prediction time.
     """
-    reasoning = fit_reasoning_by_decision(task, rows, sections)
+    required = required_reveals(rows)
+    reasoning = fit_reasoning_by_decision(task, rows, sections, required)
     leaf_labels = fit_leaf_labels(task, rows, reasoning["__default__"])
-    return {"task": task, "leaf_labels": leaf_labels, "reasoning": reasoning}
+    return {
+        "task": task,
+        "leaf_labels": leaf_labels,
+        "reasoning": reasoning,
+        "required_reveals": required,
+    }
 
 
 # --------------------------------------------------------------------------- #

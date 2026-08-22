@@ -34,31 +34,66 @@ EVALUATOR = REPO_ROOT / "refs" / "challenge" / "evaluation" / "evaluate.py"
 GT_ROOT = REPO_ROOT / "refs" / "challenge" / "evaluation" / "ground_truth"
 FIXTURES = REPO_ROOT / "work" / "fixtures"
 
+# The reference ground truth ships two Task 3 cases and both are censored, so it
+# has no comparable survival pair and the evaluator now refuses the run outright
+# ("Ranking score is undefined for ['task3']"). The synthetic cohort is built
+# with ~40% events for exactly this reason, so Task 3 parity runs there. Tasks 1
+# and 2 stay on the real reference cases, where the labels are the organizers'.
+SYNTH = REPO_ROOT / "work" / "synth"
+
+#: ``(task, cases_root, gt_root)`` for each parity run.
+COHORTS = [
+    (1, FIXTURES, GT_ROOT),
+    (2, FIXTURES, GT_ROOT),
+    (3, SYNTH / "cases", SYNTH / "ground_truth"),
+]
+
 TOL = 1e-9
 
 
-def _build_run(out_root: Path, task: int) -> list:
-    """Predict every fixture case for ``task`` into an evaluator-ready run dir."""
-    case_dirs = discover_cases(FIXTURES, (task,))
+def _build_run(out_root: Path, task: int, cases_root: Path = FIXTURES) -> list:
+    """Predict every case for ``task`` under ``cases_root`` into a run dir."""
+    case_dirs = discover_cases(cases_root, (task,))
     if not case_dirs:
-        pytest.skip(f"no fixtures for task{task} under {FIXTURES}")
+        pytest.skip(f"no cases for task{task} under {cases_root}")
     done, failed = run(ConstantPredictor(), case_dirs, out_root)
     assert not failed, f"predictor failed on {[str(d) for d, _ in failed]}"
     write_predictions_dump(out_root, done)
     return done
 
 
-def _run_official(run_dir: Path, task: int) -> Path:
-    """Invoke the official evaluator exactly as ``scripts/score.sh`` does."""
-    out = run_dir / "_scores" / f"task{task}"
+def _stub_case_map(run_dir: Path) -> Path:
+    """An empty archive case map, which the evaluator requires but need not use.
+
+    Since 2026-08-16 the evaluator resolves ``case_id`` for *file-backed* inputs
+    by joining ComponentInterfaceValue PKs against a CSV Grand Challenge exports
+    after archive creation, and it exits outright if the file is missing. Our run
+    directories inline ``case_id`` in the structured-prompt value, which
+    ``_case_id_for_job`` still tries first, so the map is never consulted -- but
+    it has to exist. Writing it here rather than into the cloned ``refs/`` tree
+    keeps the reference checkout pristine.
+    """
+    path = run_dir / "debug_archive_pks.csv"
+    path.write_text("case_id,structured-prompt_pk\n")
+    return path
+
+
+def _run_official(run_dir: Path, gt_root: Path = GT_ROOT) -> Path:
+    """Invoke the official evaluator exactly as ``scripts/score.sh`` does.
+
+    One invocation for the whole run: the evaluator derives its task set from
+    the dump, takes ``GROUND_TRUTH_DIR`` as the root holding ``task<N>/``, and
+    writes a single ``metrics.json`` whose aggregates are keyed by task id.
+    """
+    out = run_dir / "_scores"
     out.mkdir(parents=True, exist_ok=True)
     env = {
         **os.environ,
-        "TASK_ID": f"task{task}",
+        "CASE_MAP_FILE": str(_stub_case_map(run_dir)),
         "INPUT_DIRECTORY": str(run_dir),
         "PREDICTIONS_FILE": str(run_dir / "predictions.json"),
-        "GROUND_TRUTH_DIR": str(GT_ROOT / f"task{task}"),
-        "SECTION_MAPPING_FILE": str(GT_ROOT / "section_variable_mapping.json"),
+        "GROUND_TRUTH_DIR": str(gt_root),
+        "SECTION_MAPPING_FILE": str(gt_root / "section_variable_mapping.json"),
         "EVAL_OUTPUT_DIR": str(out),
         "USE_RATIONALE_JUDGE": "0",
     }
@@ -77,20 +112,22 @@ def refs_available() -> None:
         pytest.skip(f"reference ground truth not cloned at {GT_ROOT}")
 
 
-@pytest.mark.parametrize("task", [1, 2, 3])
-def test_fast_scorer_matches_a_real_evaluator_run(refs_available, tmp_path, task):
+@pytest.mark.parametrize("task,cases_root,gt_root", COHORTS, ids=["1", "2", "3"])
+def test_fast_scorer_matches_a_real_evaluator_run(
+    refs_available, tmp_path, task, cases_root, gt_root
+):
     """The C1 pass condition, end to end and through the filesystem."""
     run_dir = tmp_path / "run"
-    _build_run(run_dir, task)
-    metrics = _run_official(run_dir, task)
+    _build_run(run_dir, task, cases_root)
+    metrics = _run_official(run_dir, gt_root)
     assert metrics.is_file()
 
-    aggregate, problems = score_task(run_dir, GT_ROOT, task, TOL, compare=True)
+    aggregate, problems = score_task(run_dir, gt_root, task, TOL, compare=True)
     assert not problems, "\n".join(problems)
 
     # A comparison that compared nothing would also report no problems.
     official = json.loads(metrics.read_text())
-    assert official["aggregates"], "official run produced an empty aggregate"
+    assert official["aggregates"].get(f"task{task}"), "official run produced no aggregate"
     assert set(aggregate), "fast scorer produced an empty aggregate"
     assert official["results"], "official run scored no cases"
 
@@ -146,19 +183,27 @@ def test_the_reader_ignores_jobs_belonging_to_another_task(refs_available, tmp_p
     assert sum(len(v) for v in seen.values()) == len(done)
 
 
-def test_a_ground_truth_case_with_no_prediction_is_scored_as_a_hard_zero(
-    refs_available, tmp_path
-):
-    """Dropping a case must cost the full case score, not silently shrink n.
+def test_a_case_missing_from_the_dump_leaves_the_denominator(refs_available, tmp_path):
+    """A dropped job now shrinks n rather than scoring a hard zero.
 
-    This is the failure mode a crashed case produces in production, so the fast
-    scorer has to charge for it the way the evaluator does.
+    This reversed at upstream b0ae4eb. ``run()`` derives the phase from the
+    prediction dump -- ``phase_case_ids`` -- and filters the ground truth to it,
+    so a target the dump never mentions is not scored at all. Before, it was
+    kept and charged the full case score as a ``missing_candidate``.
+
+    That is worth pinning rather than merely following: it means a case our
+    container fails to emit costs nothing *here*, so the deterministic
+    all-cases-or-fail behaviour of the container is what protects the score, not
+    the evaluator. The fast scorer has to agree either way, or cross-validation
+    is measuring a different cohort than the leaderboard.
     """
     from chimera.scoring.records import pair_run_with_ground_truth
 
     task = 1
     run_dir = tmp_path / "run"
     _build_run(run_dir, task)
+
+    before = pair_run_with_ground_truth(run_dir, GT_ROOT / f"task{task}", task)
 
     dump = run_dir / "predictions.json"
     jobs = json.loads(dump.read_text())
@@ -167,16 +212,15 @@ def test_a_ground_truth_case_with_no_prediction_is_scored_as_a_hard_zero(
     dump.write_text(json.dumps(jobs))
 
     pairs = pair_run_with_ground_truth(run_dir, GT_ROOT / f"task{task}", task)
-    missing = [(gt, pred) for gt, pred in pairs if pred is None]
-    assert len(missing) == 1, "the dropped case should survive as an unmatched target"
-    assert len(pairs) == len(jobs) + 1, "the target count must not shrink"
+    assert not [p for _, p in pairs if p is None], "no target should be left unmatched"
+    assert len(pairs) == len(before) - 1, "the dropped case must leave the denominator"
 
-    metrics = _run_official(run_dir, task)
+    metrics = _run_official(run_dir)
     aggregate, problems = score_task(run_dir, GT_ROOT, task, TOL, compare=True)
     assert not problems, "\n".join(problems)
 
     official = json.loads(metrics.read_text())
-    row = next(r for r in official["results"] if r["gate"] == "missing_candidate")
-    assert row["case_score"] == 0.0
-    assert aggregate["n_cases"] == len(official["results"])
+    task_rows = [r for r in official["results"] if r["task"] == "biopsy"]
+    assert not [r for r in task_rows if r["gate"] == "missing_candidate"]
+    assert aggregate["n_cases"] == len(task_rows) == len(jobs)
     assert dropped["pk"] not in dump.read_text()

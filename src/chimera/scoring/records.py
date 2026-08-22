@@ -35,6 +35,17 @@ _GT_FILENAMES: dict[int, dict[str, str]] = {
     3: {"outcome": "prostate-time-to-recurrence-or-last-follow-up.json"},
 }
 
+# Clinical data now travels with the *ground truth* rather than being read off the
+# prediction's inline input, reversing the previous release. It is the context the
+# rationale judge is shown, so it has to be on the record even though no
+# judge-disabled component reads it -- otherwise our records and the evaluator's
+# differ and parity is only apparently intact. Mirrors ``CLINICAL_FILENAMES``.
+_GT_CLINICAL_FILENAMES: dict[int, str] = {
+    1: "prostate-biopsy-decision-clinical-data.json",
+    2: "prostate-treatment-decision-clinical-data.json",
+    3: "prostate-time-to-recurrence-or-last-follow-up-clinical-data.json",
+}
+
 # The evaluator's own task names, used as the ``task`` field on every row.
 TASK_KIND: dict[int, str] = {1: "biopsy", 2: "treatment", 3: "recurrence"}
 
@@ -88,6 +99,16 @@ def gt_record_from_dir(case_dir: Path, task: int) -> dict[str, Any] | None:
             record["biopsy_decision"] = decision
         else:
             record["treatment_recommendation"] = {"primary": decision}
+
+    clinical_path = case_dir / _GT_CLINICAL_FILENAMES[task]
+    clinical: Any = {}
+    if clinical_path.exists():
+        try:
+            loaded = json.loads(clinical_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            loaded = None
+        clinical = loaded if isinstance(loaded, dict) else {}
+    record["clinical_data"] = clinical
 
     record["case_id"] = case_dir.name
     return record
@@ -227,14 +248,25 @@ def pair_run_with_ground_truth(
 ) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
     """Build the ``(gt, pred)`` pairs the evaluator's ``run()`` would score.
 
-    Two asymmetries are load-bearing and both are copied from ``run()``:
-    a prediction with no matching ground truth is *dropped*, while a
-    ground-truth case with no matching prediction is *kept* and scored as a
-    missing candidate -- which is a hard zero, not an omission.
+    Since 2026-08-16 ``run()`` derives the *phase* from the prediction dump --
+    ``phase_case_ids`` -- and then keeps only the ground-truth cases in it. A
+    ground-truth case the dump never mentions is therefore no longer scored as
+    a missing candidate; it leaves the denominator entirely. That is a real
+    change in what a dropped case costs, and copying it is what keeps this
+    scorer's ``n_cases`` equal to the evaluator's.
+
+    The residual ``None`` arm is kept because ``run()`` still has one: a job
+    whose case id resolves but whose ground truth is absent is refused there
+    with ``Missing ... ground truth for phase cases``, and a caller that filters
+    the dump the way ``scripts/score.sh`` does can still hand us a target with
+    no usable prediction.
     """
     targets = load_ground_truth(gt_root, task)
     by_case = {rec["case_id"]: rec for rec in targets}
     preds = predictions_from_run(run_dir, task)
+
+    # The phase is the set of cases the dump predicts, exactly as run() defines it.
+    phase = {pred["case_id"] for pred in preds}
 
     pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     scored: set[str] = set()
@@ -242,8 +274,16 @@ def pair_run_with_ground_truth(
         gt = by_case.get(pred["case_id"])
         if gt is None:
             continue
+        # ``_score_job`` backfills an empty inline clinical value from the
+        # ground-truth copy. Judge-only, but the records must still match.
+        if not pred.get("clinical_data"):
+            pred["clinical_data"] = gt.get("clinical_data", {})
         pairs.append((gt, pred))
         scored.add(pred["case_id"])
 
-    pairs.extend((gt, None) for gt in targets if gt["case_id"] not in scored)
+    pairs.extend(
+        (gt, None)
+        for gt in targets
+        if gt["case_id"] in phase and gt["case_id"] not in scored
+    )
     return pairs

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from chimera.contract.io import CaseInputs
-from chimera.evidence import extract_reports, extract_structured
+from chimera.evidence import classify_prior_biopsy, extract_reports, extract_structured
 from chimera.evidence.reports import NOT_ASSESSED
 from chimera.models.guidelines import capra_s, eau_risk, stratum
 
@@ -90,6 +90,146 @@ def test_structured_survives_garbage():
     weird = {"psa": {"nested": 1}, "age": ["list"], "pirads": object(), "ct": 42, "ipss": None}
     f = extract_structured(_case(1, weird))
     assert f.psa is None and f.age is None and f.pirads is None and f.ct_ordinal is None
+
+
+# --------------------------------------------------------------------------- #
+# Prior biopsy recovered from the notes
+#
+# Release Version 3 deleted `bx` from all 195 Task 1 prompts, and it is the first
+# thing the Task 1 stratifier branches on. These pin the rules that get it back;
+# the cohort-level number (193/195 against Version 2) is in
+# `chimera.evidence.notes`.
+# --------------------------------------------------------------------------- #
+
+def _notes(*texts: str) -> dict:
+    return {"previous_notes": [{"date": "1 Jan 2025", "author": "Dr. X", "text": t}
+                               for t in texts]}
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # A grade is assigned to tissue, so it cannot exist without a specimen.
+        ("Biopsy in March showed Gleason 3+4 disease in two cores.", "positive"),
+        ("Histology reported ISUP grade group 2.", "positive"),
+        ("Systematic biopsy was positive in the left base.", "positive"),
+        # `risk` must not read as a hedge -- this is a diagnosis, not a question.
+        ("Subsequent histopathology confirmed low-risk prostate cancer.", "positive"),
+        ("He underwent radical prostatectomy in 2019.", "positive"),
+        ("Previous TRUS biopsy was negative.", "negative"),
+        ("Biopsy cores were benign.", "negative"),
+        # The hedge guard: a prior *negative* biopsy plus a cancer question in one
+        # clause. Reading the disease word as a diagnosis inverts the answer.
+        ("Prior negative biopsy; assess for clinically significant prostate cancer.",
+         "negative"),
+        ("Previous negative TRUS biopsy, prompting re-evaluation for occult malignancy.",
+         "negative"),
+        # Never biopsied -- a finding in its own right, and the Version 2 wording.
+        ("PSA 4.9 ng/mL on annual screening; referred to urology for imaging.", "none"),
+        # Biopsied, outcome unstated. Abstain: guessing here routes the case to the
+        # wrong leaf, and on Task 1 a wrong decision scores zero however good the
+        # reasoning.
+        ("PSA rose to 12.0 following a previous biopsy event.", None),
+        ("Biopsy was performed in 2021.", None),
+    ],
+)
+def test_prior_biopsy_is_read_from_prose(text, expected):
+    assert classify_prior_biopsy(text) == expected
+
+
+def test_contradictory_evidence_abstains():
+    """Both polarities in one record means we do not know which visit won."""
+    assert classify_prior_biopsy(
+        "First biopsy was negative. Repeat biopsy showed Gleason 3+3."
+    ) is None
+
+
+def test_the_patient_card_wins_where_it_speaks():
+    """Task 2 still carries `bx`; its coding is the organizers' and beats our regex."""
+    clinical = _notes("Biopsy showed Gleason 4+3.")
+    assert extract_structured(_case(2, {"bx": "Negative"}, clinical)).prior_biopsy == "negative"
+
+
+def test_the_notes_keep_task_2_alive_if_bx_leaves_its_card_too():
+    """The whole reason this extractor exists.
+
+    Version 3 deleted `bx` from every Task 1 prompt. If the test release does the
+    same to Task 2, every case falls into the `unknown` leaf and the task degrades
+    to a constant -- unless the status can be read back out of the prose.
+    """
+    trimmed = _case(2, {"bx_isup": 4, "psa": 8.0, "ct": "cT2a"},
+                    _notes("Biopsy in March showed Gleason 4+4 disease."))
+    f = extract_structured(trimmed)
+    assert f.prior_biopsy == "positive"
+    assert stratum(2, f) == "positive_high"
+
+
+def test_task_1_does_not_pay_for_a_feature_it_no_longer_uses():
+    """Task 1 stratifies on PI-RADS alone, so it must not go reading the notes.
+
+    The tool score is precision over declared reveals, so a section read for a
+    feature no leaf consults is a straight subtraction.
+    """
+    f = extract_structured(_case(1, {}, _notes("Biopsy showed Gleason 4+3 disease.")))
+    assert f.prior_biopsy is None
+    assert f.evidence_sections == ()
+
+
+def test_only_sections_actually_read_are_reported():
+    """`evidence_sections` is the reveal-honesty half: read it, declare it.
+
+    Empty when the card answered -- nothing was retrieved -- and naming exactly
+    the sections that carried text, not the ones we would have liked.
+    """
+    from chimera.contract import spec
+
+    card = extract_structured(_case(2, {"bx": "Positive"}, _notes("Biopsy positive.")))
+    assert card.evidence_sections == ()
+
+    both = extract_structured(_case(2, {}, {
+        "radiology_report": "Indication: rising PSA.",
+        "previous_notes": [{"text": "Biopsy showed Gleason 3+4."}],
+    }))
+    assert both.evidence_sections == ("radiology_report", "previous_notes")
+
+    one = extract_structured(_case(2, {}, {
+        "radiology_report": "Biopsy showed Gleason 3+4.", "previous_notes": [],
+    }))
+    assert one.evidence_sections == ("radiology_report",)
+
+    assert set(both.evidence_sections) <= set(spec.REVEAL_SECTIONS)
+
+
+@pytest.mark.parametrize("clinical", [
+    {},
+    {"radiology_report": None, "previous_notes": None},
+    {"previous_notes": "Free-text block with no note records."},   # Task 3's shape
+    {"previous_notes": [{"date": "1 Jan"}, "bare string", 42, None]},
+    {"radiology_report": ["fragment", {"text": "and a dict"}]},
+    {"radiology_report": 3.14, "previous_notes": {"text": "Biopsy: benign."}},
+])
+def test_the_notes_extractor_degrades_rather_than_raises(clinical):
+    """The Karolinska proxy: unfamiliar shapes cost the feature, never the case."""
+    f = extract_structured(_case(1, {}, clinical))
+    assert f.prior_biopsy in (None, "none", "negative", "positive")
+    assert isinstance(f.evidence_sections, tuple)
+
+
+def test_a_truncated_report_does_not_invent_a_diagnosis():
+    """Prose cut mid-sentence must abstain or under-call, never over-call.
+
+    Truncation is the cheap stand-in for a template we have never seen: the
+    evidence for the real answer disappears a clause at a time. Losing it has to
+    cost the feature, not flip its polarity -- ``positive`` is the expensive
+    direction, because it routes a Task 1 case to ``prior_positive`` and the gate
+    turns a wrong leaf into a zero.
+    """
+    for full in (
+        "Previous transrectal biopsy of the prostate was negative for malignancy.",
+        "PSA 4.9 ng/mL on annual screening; referred to urology for imaging.",
+    ):
+        for cut in range(4, len(full) + 1):
+            assert classify_prior_biopsy(full[:cut]) != "positive", full[:cut]
 
 
 # --------------------------------------------------------------------------- #
