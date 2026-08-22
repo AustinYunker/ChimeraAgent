@@ -53,16 +53,20 @@ out-of-fold cross-validation alongside:
 
 | Task | C1b prior | C2 | CV (5×5) | constant baseline (CV) |
 |---|---|---|---|---|
-| 1 | 0.635 | 0.686 | 0.656 ± 0.023 | 0.635 ± 0.000 |
+| 1 | 0.635 | 0.698 | 0.690 ± 0.000 | 0.635 ± 0.000 |
 | 2 | 0.292 | **0.713** | **0.708 ± 0.002** | 0.273 ± 0.038 |
 | 3 | 0.500 | **0.737** | 0.737 (nothing fitted) | 0.500 |
 
-**Task 1's gain is not established.** +0.021 against a split-to-split spread of
-0.023 is inside the noise, exactly as its near-chance univariate AUCs predicted
-(`pirads` 0.608, `cspca` 0.577). The model is kept because it is the same code
-path and its point estimate is no worse, not because it is known to help.
+Fitted and scored on **release Version 3**. Overall in-sample 0.716.
 
-Two findings drove the two real wins:
+**Task 1 got there by dropping a leaf, not adding one.** The first version gave
+prior-positive-biopsy cases their own stratum — the clinically obvious move,
+since imaging genuinely does not discriminate in men with known cancer (21 yes
+against 22 no at high PI-RADS). Out of fold it cost 0.034 and made the fitted
+labels unstable across splits (0.648 ± 0.022 against 0.690 ± 0.000 for PI-RADS
+alone). Six patients change and PI-RADS alone is right on four of them.
+
+Three findings drove the wins:
 
 - **Task 2 is a two-stage decision, not a flat four-way choice.** Prior biopsy
   result separates `continued_surveillance` almost perfectly (13 of 14 negative
@@ -71,11 +75,16 @@ Two findings drove the two real wins:
 - **Task 3's reports are templated**, so every surgical-pathology field CAPRA-S
   needs parses at 100%: grade, stage, margins, EPE, SVI, and nodal status with
   pNx correctly distinguished from pN0.
+- **The tool score is precision, not recall** — `|declared ∩ pathologist| /
+  |declared|`, so a section read and declared for a feature no leaf consults is a
+  straight subtraction, and a section missed costs nothing. Once Task 1 stopped
+  consulting prior-biopsy status it stopped reading the notes for it, and its
+  mean tool score went 0.770 → 0.946.
 
-One detail worth keeping: Task 1's `prior_positive` leaf is labelled `yes`
-although its training majority is `no` (26/23). The `F1_yes` term in the metric
-makes that the better answer — a model fitted to accuracy would have chosen
-otherwise.
+Reveal honesty runs the other way too: whatever the feature extractor *does*
+read has to appear in `reveal_sequence`. `extract_structured` reports the
+sections it consumed, the fit forces them into the reveal policy, and the
+predictor unions them per case in case the parameter file is older than the code.
 
 The image cannot be built or run here — no Docker, and rootless podman is
 unavailable — so it is built **and smoke-tested** in GitHub Actions:
@@ -88,6 +97,10 @@ scripts/smoke_test_image.sh chimera-agent work/fixtures work/smoke
 # The entrypoint itself runs natively, no container required:
 CHIMERA_INPUT=work/fixtures/task1/BX_01 CHIMERA_OUTPUT=/tmp/out python inference.py
 ```
+
+Pushing a `v*` tag builds the image, smoke-tests it, asserts the fitted
+parameters are reachable from inside it, and uploads the `docker save` tarball as
+a workflow artifact. `v0.2.0` is the C2 image: 47.6 MB gzipped, all steps green.
 
 Two crashes in the official evaluator were found along the way; both are pinned
 by tests so we never emit the shapes that trigger them — see
@@ -173,8 +186,9 @@ src/chimera/
                io.py — GC socket reader / writer
                aggregate.py — rebuilds predictions.json for the evaluator
   evidence/    structured.py — the patient card, typed; reports.py — templated
-               report parsing. Both take a CaseInputs, so training and serving
-               compute features through the same code.
+               report parsing; notes.py — prior-biopsy status read back out of
+               the referral prose, for when the card stops carrying it. All take
+               a CaseInputs, so training and serving share the feature code.
   models/      guidelines.py — CAPRA-S, EAU risk, the Task 1 partition
                stratified.py — leaf-label and reasoning fitting
   eval/        cv.py — repeated pooled out-of-fold CV (dev only, not shipped)
@@ -196,7 +210,7 @@ scripts/       score.sh — the official evaluator, run natively
 .github/       ci.yml (tests, skips are failures) · build-image.yml (build,
                smoke-test, docker save artifact)
 refs/          reference repos (gitignored)
-data/          released challenge data (gitignored, not redistributable)
+data/          released challenge data (gitignored; CC BY-NC-SA 4.0)
 work/          cohorts and run artefacts (gitignored)
 ```
 
@@ -208,6 +222,12 @@ all-rights-reserved and nothing may be copied from them. `refs/` is gitignored
 and everything in `src/` is written against the published interface rather than
 derived from their code; socket slugs, filenames and enum vocabularies are
 factual interface details, not expression.
+
+The **released data is CC BY-NC-SA 4.0** — non-commercial, share-alike,
+attribution required. It stays in gitignored `data/` and is never redistributed
+here. Nothing in `src/` embeds it, so the share-alike term does not reach this
+repository's Apache-2.0 grant; a published adaptation of the data itself would
+be a different question.
 
 ## Contract details that cost silent zeros
 

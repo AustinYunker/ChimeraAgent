@@ -27,8 +27,12 @@ implementation written against the published challenge I/O contract — socket
 slugs, filenames, and enumerated vocabularies are factual interface details, not
 expression copied from those repositories.
 
-Challenge data under `data/` is provided by the challenge organizers under their
-own terms, is not redistributable, and is gitignored.
+Challenge data under `data/` is released by the challenge organizers under
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0). It is gitignored and never redistributed from this
+repository. Note that the licence's non-commercial and share-alike terms attach
+to the data and to adaptations of it, not to this repository's independently
+written Apache-2.0 source, which contains no data.
 
 Any model weights bundled into or downloaded by the submission container remain
 subject to their own upstream licenses, which are independent of this project's
