@@ -120,6 +120,12 @@ def write_case_outputs(output_dir: Path, pred: Prediction) -> dict[str, Path]:
 
     Validation happens *before* the first write so a bad prediction cannot leave
     a half-written case behind.
+
+    Any filename in :data:`~chimera.contract.spec.LEGACY_OUTPUT_FILENAMES` for
+    this task is written as well, with identical content, so a phase still
+    configured with a superseded socket slug finds a file where it looks. Only
+    the canonical paths are returned -- everything downstream, the aggregator
+    included, should see one output per socket.
     """
     validate(pred)
     sockets = spec.OUTPUT_SOCKETS[pred.task]
@@ -130,7 +136,14 @@ def write_case_outputs(output_dir: Path, pred: Prediction) -> dict[str, Path]:
     decision_path = output_dir / decision_name
     reasoning_path = output_dir / reasoning_name
 
-    write_json(decision_path, pred.decision_json())
-    write_json(reasoning_path, pred.reasoning_json())
+    decision_json = pred.decision_json()
+    reasoning_json = pred.reasoning_json()
+
+    write_json(decision_path, decision_json)
+    write_json(reasoning_path, reasoning_json)
+
+    payload = {"decision": decision_json, "reasoning": reasoning_json}
+    for role, filename in spec.LEGACY_OUTPUT_FILENAMES.get(pred.task, {}).items():
+        write_json(output_dir / filename, payload[role])
 
     return {"decision": decision_path, "reasoning": reasoning_path}

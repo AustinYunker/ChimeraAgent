@@ -123,7 +123,7 @@ Stand up the repo, run the official evaluator natively, and push a **constant pr
 
 > **Pass:** official `evaluate.py` consumes our output files and emits `metrics.json` with a non-null `ranking_score` for all three tasks, running fully offline.
 
-This de-risks the entire I/O contract — the `prostate-biospy-decision` misspelling, the flat four-key reasoning object versus the baseline's richer Pydantic shape, bare-JSON-value decision files, and `predictions.json` aggregation — before any modelling exists.
+This de-risks the entire I/O contract — the `prostate-biospy-decision` misspelling (since corrected upstream; we now write both spellings), the flat four-key reasoning object versus the baseline's richer Pydantic shape, bare-JSON-value decision files, and `predictions.json` aggregation — before any modelling exists.
 
 ### C1 — Scorer parity ✅ *(target: Aug 10 — met Aug 8)*
 Implement the fast in-process scorer for CV.
@@ -175,7 +175,7 @@ One shot. Freeze the model, submit, write the LNCS paper against the frozen arte
 
 ## Verification
 
-- **Contract tests** (`tests/`): assert exact output filenames including the `biospy` spelling, bare-value decision files, the exact four reasoning keys, and enum token casing. These run in CI on every commit.
+- **Contract tests** (`tests/`): assert exact output filenames including both spellings of the Task 1 socket, bare-value decision files, the exact four reasoning keys, and enum token casing. These run in CI on every commit.
 - **Scorer parity test**: fast scorer vs official `evaluate.py` on repo fixtures, as C1.
 - **Reveal honesty test**: assert the emitted `reveal_sequence` is exactly the set of MCP tools actually invoked. This is the guard on our design rule.
 - **Offline test**: run the built image under `--network none` and assert no outbound connection attempts.
@@ -189,7 +189,7 @@ One shot. Freeze the model, submit, write the LNCS paper against the frozen arte
 Worth emailing `nadieh.khalili@radboudumc.nl` early — answers affect the architecture:
 
 1. Does a **deterministic MCP orchestrator** satisfy "the official MCP interface must be used for tool access", or is an LLM-driven loop required? This directly gates the hybrid design.
-2. Confirm the **`prostate-biospy-decision` slug spelling** on the live platform, since the evaluator accepts both.
+2. ~~Confirm the **`prostate-biospy-decision` slug spelling** on the live platform.~~ **Answered Aug 24** by the debug submission: the platform wants the corrected `prostate-biopsy-decision`. Only the debug phase has been observed, so we write both spellings until validation and test confirm.
 3. Is **A10G selectable** per submission, and is there a per-case wall-clock limit? The baseline's `step_timeout` of 900 s per graph step implies a generous budget, but this needs confirming before we size the model.
 4. Report the **two aggregation crashes** in `evaluate.py` (C1). Not a blocker for us, but any participant who trips one loses an entire task's score to an exception rather than to a bad prediction, and the fix is a two-line normalisation in the schema-failed branch of `evaluate_case`.
 

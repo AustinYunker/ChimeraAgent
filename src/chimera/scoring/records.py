@@ -21,8 +21,8 @@ from chimera.contract import spec
 from chimera.contract.types import DecisionPrediction, Prediction, RecurrencePrediction
 
 # Ground-truth filenames per task, mirroring ``GT_FILENAMES`` in evaluate.py.
-# Note these use the *corrected* "biopsy" spelling -- unlike our output sockets,
-# which must use the misspelled "biospy" slug.
+# These have always used the corrected "biopsy" spelling; since 2026-08-24 the
+# output sockets agree (see spec.LEGACY_OUTPUT_FILENAMES).
 _GT_FILENAMES: dict[int, dict[str, str]] = {
     1: {
         "decision": "prostate-biopsy-decision.json",
@@ -135,10 +135,10 @@ def load_ground_truth(root: Path, task: int) -> list[dict[str, Any]]:
 # can legitimately use either. Resolve the same set it does.
 _ACCEPTED_OUTPUT_SLUGS: dict[int, dict[str, tuple[str, ...]]] = {
     1: {
-        "decision": ("prostate-biospy-decision", "prostate-biopsy-decision"),
+        "decision": ("prostate-biopsy-decision", "prostate-biospy-decision"),
         "reasoning": (
-            "prostate-biospy-decision-reasoning",
             "prostate-biopsy-decision-reasoning",
+            "prostate-biospy-decision-reasoning",
         ),
     },
     2: {

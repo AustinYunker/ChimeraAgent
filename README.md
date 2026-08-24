@@ -100,7 +100,7 @@ CHIMERA_INPUT=work/fixtures/task1/BX_01 CHIMERA_OUTPUT=/tmp/out python inference
 
 Pushing a `v*` tag builds the image, smoke-tests it, asserts the fitted
 parameters are reachable from inside it, and uploads the `docker save` tarball as
-a workflow artifact. `v0.2.0` is the C2 image: 47.6 MB gzipped, all steps green.
+a workflow artifact. `v0.2.1` is the current C2 image: ~47.6 MB gzipped, all steps green.
 
 Two crashes in the official evaluator were found along the way; both are pinned
 by tests so we never emit the shapes that trigger them — see
@@ -233,8 +233,12 @@ be a different question.
 
 Each of these is enforced by a test in `tests/`.
 
-- **The Task 1 socket is misspelled `biospy`.** The evaluator accepts either
-  spelling, but `predictions.json` declares `biospy`, so that is what we write.
+- **The Task 1 socket was misspelled `biospy` and has been corrected.** The
+  2026-08-24 debug submission rejected the misspelling — *"Output file
+  'prostate-biopsy-decision.json' was not produced"* — so the corrected name is
+  canonical. We still write the old one alongside it: sockets are configured per
+  phase, only the debug phase has been observed, and the test phase is a single
+  submission with no retry. See `spec.LEGACY_OUTPUT_FILENAMES`.
 - **Grand Challenge truncates socket slugs to 50 characters** but not
   `relative_path`. Identify interfaces by slug, resolve files by path.
 - **Decision files are bare JSON values** — `"yes"`, not `{"decision": "yes"}`.

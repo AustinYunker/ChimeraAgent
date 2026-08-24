@@ -39,20 +39,51 @@ def _reasoning(task: int, **overrides) -> Reasoning:
 # Output shapes on disk
 # --------------------------------------------------------------------------- #
 
-def test_task1_writes_biospy_misspelling(tmp_path):
-    """The Task 1 socket is misspelled 'biospy'. Writing 'biopsy' loses the case."""
+def test_task1_writes_both_spellings_of_the_biopsy_socket(tmp_path):
+    """Task 1's socket was misspelled 'biospy' upstream and has been corrected.
+
+    The debug phase rejected the misspelling on 2026-08-24, so the corrected
+    name is canonical. The old one is still written because sockets are
+    configured per phase and the test phase -- one submission, no retry -- has
+    never been observed. See spec.LEGACY_OUTPUT_FILENAMES.
+    """
     pred = DecisionPrediction(task=1, decision="yes", reasoning=_reasoning(1))
     write_case_outputs(tmp_path, pred)
 
-    assert (tmp_path / "prostate-biospy-decision.json").is_file()
-    assert (tmp_path / "prostate-biospy-decision-reasoning.json").is_file()
-    assert not (tmp_path / "prostate-biopsy-decision.json").exists()
+    for name in (
+        "prostate-biopsy-decision.json",
+        "prostate-biopsy-decision-reasoning.json",
+        "prostate-biospy-decision.json",
+        "prostate-biospy-decision-reasoning.json",
+    ):
+        assert (tmp_path / name).is_file(), name
+
+    # Identical content, so whichever socket a phase resolves scores the same.
+    for correct, legacy in (
+        ("prostate-biopsy-decision.json", "prostate-biospy-decision.json"),
+        (
+            "prostate-biopsy-decision-reasoning.json",
+            "prostate-biospy-decision-reasoning.json",
+        ),
+    ):
+        assert json.loads((tmp_path / correct).read_text()) == json.loads(
+            (tmp_path / legacy).read_text()
+        )
+
+
+def test_only_task1_has_a_legacy_alias(tmp_path):
+    """Tasks 2 and 3 write exactly two files. The alias is not a general habit."""
+    write_case_outputs(
+        tmp_path / "t2",
+        DecisionPrediction(task=2, decision="active_treatment", reasoning=_reasoning(2)),
+    )
+    assert len(list((tmp_path / "t2").iterdir())) == 2
 
 
 def test_decision_file_is_a_bare_json_value(tmp_path):
     """Tasks 1 and 2 write a bare string, not an object wrapping it."""
     write_case_outputs(tmp_path, DecisionPrediction(task=1, decision="no", reasoning=_reasoning(1)))
-    assert json.loads((tmp_path / "prostate-biospy-decision.json").read_text()) == "no"
+    assert json.loads((tmp_path / "prostate-biopsy-decision.json").read_text()) == "no"
 
     write_case_outputs(
         tmp_path,
@@ -65,7 +96,7 @@ def test_decision_file_is_a_bare_json_value(tmp_path):
 def test_reasoning_file_has_exactly_four_keys(tmp_path):
     """The baseline's Pydantic models carry more; the evaluator wants these four."""
     write_case_outputs(tmp_path, DecisionPrediction(task=1, decision="yes", reasoning=_reasoning(1)))
-    payload = json.loads((tmp_path / "prostate-biospy-decision-reasoning.json").read_text())
+    payload = json.loads((tmp_path / "prostate-biopsy-decision-reasoning.json").read_text())
     assert set(payload) == {"confidence", "variable_weights", "reveal_sequence", "free_text"}
 
 

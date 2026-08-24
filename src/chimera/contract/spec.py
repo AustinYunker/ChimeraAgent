@@ -10,9 +10,9 @@ web pages, which do not document the submission shapes:
 
 Two spellings matter and are easy to get wrong:
 
-* The Task 1 output socket is misspelled **biospy**. The evaluator accepts
-  either spelling, but ``predictions.json`` declares ``biospy``, so that is
-  what we write.
+* The Task 1 output socket **was** misspelled ``biospy`` and has since been
+  corrected on the platform -- see :data:`LEGACY_OUTPUT_FILENAMES` for the
+  evidence and for why we still write the old name alongside the new one.
 * Grand Challenge truncates socket *slugs* to 50 characters, which clips the
   Task 3 slugs. The ``relative_path`` is *not* truncated. Resolve files by
   ``relative_path``, identify interfaces by slug.
@@ -53,10 +53,10 @@ TASK_BY_INTERFACE_KEY: Final[dict[tuple[str, ...], int]] = {
 
 OUTPUT_SOCKETS: Final[dict[int, dict[str, tuple[str, str]]]] = {
     1: {
-        "decision": ("prostate-biospy-decision", "prostate-biospy-decision.json"),
+        "decision": ("prostate-biopsy-decision", "prostate-biopsy-decision.json"),
         "reasoning": (
-            "prostate-biospy-decision-reasoning",
-            "prostate-biospy-decision-reasoning.json",
+            "prostate-biopsy-decision-reasoning",
+            "prostate-biopsy-decision-reasoning.json",
         ),
     },
     2: {
@@ -76,6 +76,33 @@ OUTPUT_SOCKETS: Final[dict[int, dict[str, tuple[str, str]]]] = {
             "prostate-time-to-recurrence-or-last-follow-up-reas",
             "prostate-time-to-recurrence-or-last-follow-up-reasoning.json",
         ),
+    },
+}
+
+#: Superseded output filenames, still written alongside the canonical ones.
+#:
+#: Task 1's socket was misspelled ``prostate-biospy-decision``, and until the
+#: 2026-08-24 debug submission that is what we wrote -- the algorithm template
+#: Grand Challenge itself generates (``refs/baseline/inference.py``) writes the
+#: misspelling, which is the strongest evidence available offline. The platform
+#: disagreed: Tasks 2 and 3 passed and Task 1 failed with *"Output file
+#: 'prostate-biopsy-decision.json' was not produced"* against a log line reading
+#: ``wrote decision : /output/prostate-biospy-decision.json``. So the socket has
+#: been corrected upstream and the canonical spelling above is now right.
+#:
+#: We keep emitting the old name too, because the correction landed on *one
+#: phase* and we have no way to see the others. Sockets are configured per
+#: phase, the debug phase is the only one we have observed, and the test phase
+#: is a single submission with no retry -- if it still carries the old socket,
+#: writing only the new name scores zero on Task 1. An undeclared extra file in
+#: ``/output`` is ignored by the platform, so the alias costs one 20-byte write.
+#:
+#: Delete this once a submission to *every* phase has been observed to accept
+#: the corrected spelling. Confirmed phases: debug (2026-08-24).
+LEGACY_OUTPUT_FILENAMES: Final[dict[int, dict[str, str]]] = {
+    1: {
+        "decision": "prostate-biospy-decision.json",
+        "reasoning": "prostate-biospy-decision-reasoning.json",
     },
 }
 
