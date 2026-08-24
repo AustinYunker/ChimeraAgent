@@ -16,19 +16,31 @@ questions from working through `evaluate.py` and the released training data. The
 first three affect architectural decisions we need to make now; the fourth is a
 bug report we think is worth acting on regardless of us.
 
-**1. Task 2 `reveal_sequence` is empty in all 72 labeled training cases.**
+**1. `cost_aware_tool_score` rewards declaring no tool use at all.**
 
-Every labeled Task 2 case in `train_release` has `"reveal_sequence": []`, whereas
-Task 1 averages three to four sections per case. Because `cost_aware_tool_score`
-is precision against the reference reveal set, this makes *any* declared reveal
-on Task 2 score zero on that component, and revealing nothing score 1.0.
+The release notes explain that Task 2's `reveal_sequence` is "currently
+unavailable and is represented as an empty list", which answers what we had
+first meant to ask. But working out the consequence surfaced something we think
+is a genuine scoring-design issue, and it is not specific to Task 2.
 
-Is that a genuine finding — Task 2 decisions were made without section
-retrieval — or was that part of the annotation form not administered for Task 2?
-We would rather not build a policy around an artifact. If the reference
-annotations are likely to change before the test set, we would very much
-appreciate knowing, since the two cases imply opposite optimal behaviour for
-0.15 of the Task 2 case score.
+`cost_aware_tool_score` is precision — `|agent ∩ reference| / |agent|` — and
+returns **1.0 when the agent declares no tools at all**, on the reasoning that no
+unnecessary cost was incurred. That makes an empty `reveal_sequence` *weakly
+dominant* on this component: it scores the maximum against any reference, and a
+perfectly-chosen reveal set can only equal it, never beat it. An agent that
+retrieves nothing is scored at least as well as one that retrieves exactly what
+the urologist did.
+
+`section_grounding_score` is the only counterweight, and it is bounded: variables
+readable from the patient card (`psa`, `age`) and variables whose sections lie
+outside the reveal vocabulary (`comorbidity`) are grounded or excluded for free.
+An agent that weights *only* those is fully grounded having read nothing, and
+collects both components at maximum.
+
+We are flagging it rather than quietly exploiting it. If the intent is to reward
+efficient-but-real retrieval, a recall term, or scoring an empty reveal set as
+0.0 rather than 1.0 when the reference is non-empty, would close it. We are
+happy to open an issue with a worked example.
 
 **2. Does a deterministic MCP orchestrator satisfy the tool-use requirement?**
 
@@ -75,7 +87,20 @@ than to a bad prediction. Normalising in the schema-failed branch of
 `evaluate_case`, as the success branch already does, appears sufficient. We are
 happy to open an issue or a pull request if that is useful.
 
-**5. Three quick confirmations.**
+**5. Is the LLM rationale judge active on the leaderboard?**
+
+`evaluate.py` gates `mean_rationale_score` behind `USE_RATIONALE_JUDGE`, which
+changes the case-score weights materially — 0.10 to the judge, with the five
+deterministic components renormalised down. Our debug-phase score came back
+noticeably above what we compute offline with the judge disabled, which we cannot
+fully account for from case mix alone.
+
+Could you confirm whether the judge runs in the validation and test phases, and
+if so which model backs it? We would like our offline scoring to match the
+leaderboard's, and the answer changes how much of our effort should go to the
+free-text rationale versus the structured fields.
+
+**6. Three quick confirmations.**
 
 - The Task 1 output socket appears to have been renamed from
   `prostate-biospy-decision` to the corrected `prostate-biopsy-decision`. The

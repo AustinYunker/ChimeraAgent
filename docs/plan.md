@@ -8,8 +8,9 @@ The deadline structure is unforgiving and drives everything below:
 
 | Date | Event |
 |---|---|
-| **Aug 10, 2026** | Validation opens — **5 submissions total**, best counts |
+| ~~Aug 10~~ **Sep 1, 2026** | Validation opens — **5 submissions total**, best counts *(pushed back by the organizers)* |
 | **Sep 10, 2026** | Test set — **one single submission**, no retries |
+| Dec 18, 2026 | Debug phase closes — unmetered, 3/day, a subset of the released dev data |
 | Sep 27–Oct 1 | MICCAI; 6-page LNCS paper + public repo required for ranking |
 
 Roughly five weeks, with a one-shot final submission. That inverts the usual priority order: **contract conformance and infrastructure must be proven before modelling starts**, because a container that fails to run on Sep 10 scores zero regardless of model quality.
@@ -150,10 +151,56 @@ Task 1/2 classifiers and the Task 3 survival model, under nested CV.
 
 > **Pass:** CV `ranking_score` beats both a majority-class baseline and the reference agent baseline on all three tasks.
 
-### C3 — Reasoning heads + selector *(target: Aug 27)*
-Confidence and variable-weight predictors, plus the 64-subset reveal optimiser.
+### C3 — Reasoning heads + selector ❌ *cancelled Aug 24, on measurement*
 
-> **Pass:** measurable CV lift in `mean_case_score_among_gate_passed` over LLM-emitted reasoning fields, with the contribution of each component reported separately.
+> **Original pass condition:** measurable CV lift in `mean_case_score_among_gate_passed`
+> from per-case confidence and variable-weight predictors plus a 64-subset reveal
+> optimiser.
+
+**Cancelled: the deterministic reasoning side is already at its practical ceiling.**
+Measured against v3, gated to the cases whose decision is correct (the only ones that
+pay), in per-task `ranking_score` points:
+
+| | oracle, perfect labels | best feature-conditioned, **in-sample** |
+|---|---|---|
+| Task 1 confidence | +0.0192 | **+0.0006** |
+| Task 2 confidence | +0.0094 | **+0.0000** |
+| Task 1 weights + reveals | +0.0309 | **+0.0027** |
+| Task 2 weights + reveals | +0.0245 | **+0.0017** |
+
+The right-hand column is an *upper bound* — it strata-fits on the evaluation data
+itself, with no held-out penalty — and it still totals under +0.005 overall. Out of
+fold it is indistinguishable from zero. The oracle column is much larger only because
+a per-case oracle can absorb individual annotator idiosyncrasy, and no feature we
+extract predicts that. The gap between the two columns is irreducible label noise, not
+unexploited structure.
+
+Three structural reasons, each worth carrying into the paper:
+
+- **`cost_aware_tool_score` returns 1.0 for an empty `reveal_sequence`,
+  unconditionally** (`evaluate.py:1073`) — it is precision, and precision over an
+  empty set is defined as no cost incurred. Declaring nothing therefore *weakly
+  dominates* on that component: it always scores the maximum, and a perfect reveal
+  set can only tie it. The sole incentive to reveal anything is `section_grounding`.
+- **Task 2's reference `reveal_sequence` is empty in all 72 cases**, so the tool
+  component there is binary — 1.0 for revealing nothing, 0.0 for revealing anything.
+  Combined with grounding, that leaves exactly two candidate regimes, and the search
+  over both is exact rather than approximate. 200 random restarts converge on the
+  head we already ship. Its `variable_weight_weighted_kappa` of 0.139 is not a defect;
+  it is the correct price for `tool = 1.000` and `grounding = 1.000`.
+- **Confidence is scored `1 - |distance| / 2`**, a soft ordinal. A well-chosen constant
+  is within a thousandth of the best conditioned policy, because being one step wrong
+  still earns half credit.
+
+The reveal optimiser is likewise dead: Task 1 already scores tool 0.946 / grounding
+0.976 and Task 2 scores 1.000 / 1.000.
+
+**Where the points actually are, in descending order:** Task 1 decisions (71.4%
+accurate, 26 of 91 wrong, every univariate AUC near chance), Task 3's C-index (0.737
+from an unfitted nomogram, and a full third of the overall score with *no* reasoning
+component at all), and Task 2 decisions (80.6%, 14 of 72 wrong). One additional
+correct Task 2 decision is worth roughly as much as the entire Task 2 reasoning
+oracle.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
