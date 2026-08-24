@@ -3,8 +3,10 @@
 Every constant here was read off the official repos rather than the challenge
 web pages, which do not document the submission shapes:
 
-* socket slugs / relative paths -- ``evaluation/test/input/predictions.json``
-  and ``inference.py`` in ``DIAGNijmegen/chimera-agent-baseline``
+* socket slugs / relative paths -- ``evaluation/test/input/predictions.json``,
+  which is a real job dump and outranks the generated ``inference.py`` template
+  in ``DIAGNijmegen/chimera-agent-baseline`` wherever the two disagree
+  (:data:`LEGACY_OUTPUT_FILENAMES` records where they did)
 * scored field vocabularies     -- ``evaluation/evaluate.py`` and
   ``evaluation/ground_truth/section_variable_mapping.json``
 
@@ -82,13 +84,23 @@ OUTPUT_SOCKETS: Final[dict[int, dict[str, tuple[str, str]]]] = {
 #: Superseded output filenames, still written alongside the canonical ones.
 #:
 #: Task 1's socket was misspelled ``prostate-biospy-decision``, and until the
-#: 2026-08-24 debug submission that is what we wrote -- the algorithm template
-#: Grand Challenge itself generates (``refs/baseline/inference.py``) writes the
-#: misspelling, which is the strongest evidence available offline. The platform
-#: disagreed: Tasks 2 and 3 passed and Task 1 failed with *"Output file
+#: 2026-08-24 debug submission that is what we wrote. The platform disagreed:
+#: Task 3 passed and Task 1 failed with *"Output file
 #: 'prostate-biopsy-decision.json' was not produced"* against a log line reading
-#: ``wrote decision : /output/prostate-biospy-decision.json``. So the socket has
-#: been corrected upstream and the canonical spelling above is now right.
+#: ``wrote decision : /output/prostate-biospy-decision.json``.
+#:
+#: Three offline sources, and only the stale one said ``biospy``:
+#:
+#: * ``refs/challenge/evaluation/test/input/predictions.json`` -- the sample job
+#:   dump, and the closest thing to a platform record. Says ``biopsy``, for both
+#:   slug and ``relative_path``. This is what we should have believed.
+#: * ``refs/baseline/inference.py`` -- the algorithm template Grand Challenge
+#:   generates. Says ``biospy``. Not regenerated since the rename.
+#: * ``refs/challenge/evaluation/evaluate.py:223`` -- a comment asserting that
+#:   ``predictions.json`` uses ``biospy``. Contradicted by the fixture beside it.
+#:
+#: The lesson for the next contract question: prefer the artefact the platform
+#: produces over prose describing it, and over generated scaffolding.
 #:
 #: We keep emitting the old name too, because the correction landed on *one
 #: phase* and we have no way to see the others. Sockets are configured per
