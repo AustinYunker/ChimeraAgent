@@ -160,10 +160,20 @@ MCP server, reveal execution, LLM writer, offline model weights.
 
 > **Pass:** full pipeline runs offline on a held-out split; declared `reveal_sequence` exactly matches observed MCP calls (assert this in a test); `mean_rationale_score` at or above baseline.
 
-### C5 — Container + GC dry run *(target: Sep 5)*
+### C5 — Container + GC dry run ✅ *(target: Sep 5 — met Aug 24)*
 GitHub Actions build, lean image plus separate model tarball.
 
 > **Pass:** image runs with `--network none` on a single flat-socket case within the GC time and memory budget, on sm_86-equivalent hardware.
+
+Met ahead of schedule, and on stronger evidence than the pass condition asks for: the
+**debug phase** — a separate submission pool from the 5 validation slots, 3/day,
+closing Dec 18 — accepted `v0.2.1` on **all three interfaces** on Aug 24. That is the
+real platform rather than a local proxy. The one failure along the way was the Task 1
+socket spelling (see `spec.LEGACY_OUTPUT_FILENAMES`), which is exactly what an early
+plumbing run exists to catch.
+
+Debug submissions are cheap and unmetered against validation. Every container change
+from here goes through debug before it goes anywhere else.
 
 ### C6 — Validation spend *(Sep 5–8)*
 Submissions 2–5, staged so each answers a distinct question rather than chasing noise.
