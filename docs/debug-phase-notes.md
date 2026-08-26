@@ -313,6 +313,17 @@ Task 3's rationale improved 0.1214 → 0.2053 and is worth **zero** leaderboard 
 the note above says. It moved because the same module writes it, not because it was aimed
 at.
 
+**The local judge is a conservative proxy for the platform's, not a replica.** The 12
+debug cases were scored by the platform under `v0.2.1`, and only `spec.py` and docs have
+changed since, so `judged-baseline` carries identical `free_text` — a free paired
+calibration. Over the 11 gate-passed cases the two judges correlate strongly on ordering
+(Pearson **+0.818**, Spearman **+0.831**, p = 0.002) but ours scores **0.118 lower** on
+average (95% CI −0.223 … −0.013). Ordering is the property the A/B above relies on, so
+the *direction* holds; the *magnitude* does not transfer, and since scores cap at 1.0 the
+offset cannot be a pure shift near the top. **Treat +0.0114 as an upper bound**, with
+Task 2 — now at 0.8621 locally — the component most likely to compress. Full table and
+caveats in `docs/judge-setup.md`.
+
 **The judge is deterministic on this host.** `judged-rationale` and `judged-nodre` differ
 only in Task 1 text (`diff -rq`: 190 biopsy files differ, 0 treatment or recurrence files)
 and returned identical Task 2 and Task 3 scores to four decimals over 147 cases. So an A/B

@@ -97,6 +97,47 @@ design, and the deterministic components are unaffected by `free_text` anyway.
 What it does buy is that an A/B of two rationale variants is a clean read — a
 difference in the judged score is a difference in the text, not sampling noise.
 
+## Calibration against the platform's judge
+
+Reproducible is not the same as *correct*. The 12 debug cases give a free paired
+check, because the platform scored them under `v0.2.1` and only `spec.py` and docs
+have changed since — so `work/run/judged-baseline` carries byte-identical
+`free_text`. Confirmed directly: the platform's reason string for
+`PT-pseudo_0020cfca66c8` quotes `"Weighted most heavily: pirads, psa, age, bx"`,
+which is what our baseline emits for that case.
+
+Per-case `rationale_score`, platform against local, 11 cases (one gate failure):
+
+| | value |
+|---|---|
+| platform mean | 0.500 |
+| local mean | **0.382** |
+| mean difference | **−0.118** (95% CI −0.223 … −0.013) |
+| mean absolute difference | 0.155 |
+| max absolute difference | 0.500 (T2-001: platform 0.9, local 0.4) |
+| Pearson *r* | **+0.818** (p = 0.002) |
+| Spearman *ρ* | **+0.831** (p = 0.002) |
+
+**Our judge is a conservative proxy: it orders cases the way the platform's does,
+and scores them about 0.12 lower.** Both halves matter.
+
+The correlation is what licenses the instrument. We use it to *rank variants*, and
+on ordering the two agree strongly — so the direction of a measured A/B is
+trustworthy, which is the property the rewrite measurement actually leaned on.
+
+The offset means absolute local scores must not be quoted as platform predictions,
+and there is a sharper consequence: scores are quantised to 0.1 and capped at 1.0,
+so a systematic **shift** cannot continue to hold near the top of the range. Task 2
+post-rewrite scores 0.8621 locally; adding 0.118 puts it at 0.98, which is not
+credible. Either the offset compresses as scores rise, or it is not a pure shift.
+Both readings imply the **+0.0114 overall is an upper bound on what the platform
+will show**, with the Task 2 component the most likely to shrink. That is a
+hypothesis, not a measurement — n = 11, quantised to 0.1, and the CI on the bias
+only barely excludes zero.
+
+Do not chase the offset. Tuning local prose against a 0.12 gap on eleven cases is
+fitting the proxy, not the target.
+
 ## Stopping the server
 
 Not with `pkill -f "ollama serve"` — the pattern matches the shell running it and
