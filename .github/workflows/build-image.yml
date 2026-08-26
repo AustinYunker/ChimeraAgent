@@ -4,10 +4,11 @@ name: build-image
 # publishes the `docker save` tarball as an artifact to upload to the platform.
 #
 # This workflow is not a convenience -- it is the only path to a submission. The
-# build host has no container runtime (no Docker; rootless podman is unavailable
-# because /etc/subuid has no entry for the build user), so the image cannot be
-# built or executed anywhere else. The smoke-test job therefore carries the
-# weight that a local `docker run` would normally carry.
+# build host has no Docker, and its rootless podman maps a single UID (no
+# /etc/subuid entry for the build user), which is not enough to unpack even the
+# base image -- `FROM python:3.11-slim` dies on `lchown /etc/gshadow`. So the
+# image cannot be built or executed anywhere else, and the smoke-test job
+# carries the weight that a local `docker run` would normally carry.
 on:
   push:
     tags: ["v*"]

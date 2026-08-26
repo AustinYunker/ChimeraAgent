@@ -1,16 +1,25 @@
 # Grand Challenge submission image for the CHIMERA-agent entry.
 #
-# Deliberately tiny. The C1b payload is the fitted constant prior, whose entire
-# runtime import closure is the Python standard library -- no numpy, no
+# Deliberately tiny. The payload is `GuidelinePredictor` (see inference.py), with
+# `ConstantPredictor` as the fallback when a case defeats the normal route. Its
+# entire runtime import closure is the Python standard library -- no numpy, no
 # scikit-learn, no pydantic, no torch -- so there is nothing to gain from the
 # CUDA base image the eventual LLM pipeline will need. ~150 MB builds in about a
-# minute, which keeps the one path we cannot exercise locally (see below) as
-# short and as reliable as possible.
+# minute, which keeps the one path we exercise least often (see below) as short
+# and as reliable as possible.
 #
-# The build host has no container runtime at all: no Docker, and rootless podman
-# is unavailable because /etc/subuid has no entry for the build user. This image
-# is therefore built *and smoke-tested* in GitHub Actions -- see
-# .github/workflows/build-image.yml -- and never on a developer machine.
+# The build host has no Docker. Rootless podman is installed and does start, so
+# "no container runtime" overstated it -- but it maps a single UID, because
+# /etc/subuid has no entry for the build user, and that is not enough to unpack
+# the base image, let alone run this file. Measured, not assumed:
+#
+#   ApplyLayer ... potentially insufficient UIDs or GIDs available in user
+#   namespace (requested 0:42 for /etc/gshadow) ... lchown: invalid argument
+#
+# It fails on `FROM`, before any instruction below is reached. The authoritative
+# build is therefore in GitHub Actions, which also smoke-tests the image against
+# the platform contract: see .github/workflows/build-image.yml. That workflow
+# triggers on a `v*` tag or by workflow_dispatch.
 #
 # Platform contract, mirrored by .github/workflows/build-image.yml:
 #   /input          read-only, one case, flat sockets described by inputs.json
