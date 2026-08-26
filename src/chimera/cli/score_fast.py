@@ -39,7 +39,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from chimera.scoring.fast import score_cohort_rows
+from chimera.scoring.fast import CASE_COMPONENT_WEIGHTS_JUDGE_OFF, score_cohort_rows
 from chimera.scoring.records import TASK_KIND, pair_run_with_ground_truth
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -169,7 +169,12 @@ def score_task(run_dir: Path, gt_root: Path, task: int, tol: float, compare: boo
                ) -> tuple[dict[str, Any], list[str]]:
     """Score one task; return its aggregate and any parity problems found."""
     pairs = pair_run_with_ground_truth(run_dir, gt_root / f"task{task}", task)
-    rows, aggregate = score_cohort_rows(pairs)
+    # This command exists to diff against ``scripts/score.sh``, which runs the
+    # official evaluator with USE_RATIONALE_JUDGE=0. Parity therefore needs the
+    # judge-off weighting, not the judge-on one the selection loops default to.
+    rows, aggregate = score_cohort_rows(
+        pairs, weights=CASE_COMPONENT_WEIGHTS_JUDGE_OFF
+    )
 
     if not compare:
         return aggregate, []

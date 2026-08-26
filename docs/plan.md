@@ -151,7 +151,16 @@ Task 1/2 classifiers and the Task 3 survival model, under nested CV.
 
 > **Pass:** CV `ranking_score` beats both a majority-class baseline and the reference agent baseline on all three tasks.
 
-### C3 — Reasoning heads + selector ❌ *cancelled Aug 24, on measurement*
+### C3 — Reasoning heads + selector ❌ *cancelled Aug 24* — ⚠️ **cancellation void, re-open**
+
+> ⚠️ **The measurements below were taken with the wrong weights and do not support the
+> conclusion drawn from them.** Upstream `192c39c` (Aug 24) repriced section grounding
+> 0.15 → 0.05 and rationale 0.10 → 0.20, and reweighted the tasks 1:1:1 → 2:2:1. The
+> sweep behind this table priced grounding at **0.175** — 3.5× the live value — and the
+> Task 2 head it blessed was tuned to hold exactly that component at 1.000. Every number
+> in this section is stale, including the "under +0.005 overall" that justified the
+> cancellation. See `docs/debug-phase-notes.md`. The scorer has since been corrected;
+> the sweep has not been re-run.
 
 > **Original pass condition:** measurable CV lift in `mean_case_score_among_gate_passed`
 > from per-case confidence and variable-weight predictors plus a 64-subset reveal
@@ -197,10 +206,16 @@ The reveal optimiser is likewise dead: Task 1 already scores tool 0.946 / ground
 
 **Where the points actually are, in descending order:** Task 1 decisions (71.4%
 accurate, 26 of 91 wrong, every univariate AUC near chance), Task 3's C-index (0.737
-from an unfitted nomogram, and a full third of the overall score with *no* reasoning
+from an unfitted nomogram, and a fifth of the overall score with *no* reasoning
 component at all), and Task 2 decisions (80.6%, 14 of 72 wrong). One additional
 correct Task 2 decision is worth roughly as much as the entire Task 2 reasoning
 oracle.
+
+> ⚠️ Task 3 was **a third** of the overall score when this was written; `192c39c`
+> reweighted the tasks 2:2:1, cutting it to a fifth and raising Tasks 1 and 2 to
+> two fifths each. The ordering above survives — it moves *against* Task 3 and
+> *for* the two decision tasks — but the rationale component those tasks now carry
+> at 0.20 is not priced anywhere in this section.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.

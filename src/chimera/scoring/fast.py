@@ -6,10 +6,15 @@ files, and -- with the judge on -- a running Ollama. This module computes the
 same numbers from records already in memory, which is what makes nested CV and
 the 64-subset reveal search in C3 tractable.
 
-**The judge is out of scope here, permanently.** Everything below reproduces
-the ``USE_RATIONALE_JUDGE=0`` path, where the evaluator drops the 0.10 rationale
-weight and renormalises the remaining five components. An LLM judge is not
-reproducible to 1e-9 and has no place in a selection loop.
+**The judge is out of scope here, permanently.** An LLM judge is not reproducible
+to 1e-9 and has no place in a selection loop; this host has no Ollama to run one
+against in any case.
+
+That leaves a choice of *which* judgeless weighting to use, and the two are not
+interchangeable -- see :data:`CASE_COMPONENT_WEIGHTS`. The default reproduces the
+leaderboard's **judge-on** pricing of the five deterministic components and simply
+omits the rationale term. It is the right instrument for selection and the wrong
+one for parity; pass :data:`CASE_COMPONENT_WEIGHTS_JUDGE_OFF` for the latter.
 
 Every function here mirrors one in ``evaluation/evaluate.py``, named the same
 where possible, and ``tests/test_scorer_parity.py`` drives both over randomised
@@ -41,9 +46,37 @@ _WEIGHT_ALIAS = {"not_revealed": "not_used"}
 #: Horizons (months) for the reported cumulative/dynamic AUC.
 TD_AUC_HORIZONS_MONTHS = (12.0, 24.0, 36.0, 60.0)
 
-#: Task 1/2 case-score weights **with the rationale judge disabled**. With the
-#: judge on these are 0.20 / 0.25 / 0.15 / 0.15 / 0.15 plus 0.10 for rationale.
+#: The five deterministic components at the weights the **live, judge-on**
+#: evaluator gives them (``evaluate.py`` ``components``), with the 0.20 rationale
+#: term omitted because we cannot model it. Upstream ``192c39c`` (Aug 24 2026,
+#: "weighing rationale higher") moved section grounding 0.15 -> 0.05 and rationale
+#: 0.10 -> 0.20; our submission scored on Aug 24 confirms the deployed evaluator
+#: matches. This is the default because every in-repo caller is doing *selection*.
+#:
+#: These sum to 0.80, not 1.0, and that is deliberate. A case's true score is this
+#: plus ``0.20 * rationale``. Holding the rationale constant -- which it is with
+#: respect to ``variable_weights`` and ``reveal_sequence``, the things a policy
+#: search moves -- omitting it shifts every ``mean_case_score`` and every
+#: ``ranking_score`` by a *constant*, so the ordering of candidate policies is
+#: preserved exactly. Renormalising these five back to 1.0 would instead rescale
+#: case-score differences by 1.25 against an unscaled decision F1 and silently
+#: distort the reasoning-versus-decision trade-off. Read the absolute numbers as
+#: deflated; read differences between them as sound.
 CASE_COMPONENT_WEIGHTS: dict[str, float] = {
+    "confidence": 0.20,
+    "var_weight": 0.25,
+    "factor_f1": 0.15,
+    "tool": 0.15,
+    "section_grounding": 0.05,
+}
+
+#: What the evaluator uses when the judge is *off*: the same five components
+#: renormalised to sum to 1.0. Note this is not a rescaling of the above -- it
+#: prices section grounding at 0.175 against the live 0.05, a factor of 3.5, which
+#: is exactly the parameter the C3 reveal search was most sensitive to. Use this
+#: only to prove parity against ``evaluate.py`` run with ``USE_RATIONALE_JUDGE=0``;
+#: never for selection.
+CASE_COMPONENT_WEIGHTS_JUDGE_OFF: dict[str, float] = {
     "confidence": 0.225,
     "var_weight": 0.275,
     "factor_f1": 0.175,
@@ -475,11 +508,20 @@ def _recurrence_row(gt: dict, pred: dict | None) -> dict[str, Any]:
     return row
 
 
-def score_case(gt: dict, pred: dict | None) -> dict[str, Any]:
+def score_case(
+    gt: dict,
+    pred: dict | None,
+    *,
+    weights: dict[str, float] = CASE_COMPONENT_WEIGHTS,
+) -> dict[str, Any]:
     """Score one case. Mirrors ``evaluate_case`` with the judge disabled.
 
     The returned row carries every component separately, which is what the C3
     selector optimises against.
+
+    ``weights`` defaults to the live judge-on pricing of the five deterministic
+    components; pass :data:`CASE_COMPONENT_WEIGHTS_JUDGE_OFF` to reproduce
+    ``evaluate.py`` under ``USE_RATIONALE_JUDGE=0``.
     """
     task = task_kind(gt)
     if task == "recurrence":
@@ -549,7 +591,7 @@ def score_case(gt: dict, pred: dict | None) -> dict[str, Any]:
     row["tool_score"] = ts
     row["section_grounding_score"] = sgs
 
-    w = CASE_COMPONENT_WEIGHTS
+    w = weights
     score = (
         (cs or 0.0) * w["confidence"]
         + (vws or 0.0) * w["var_weight"]
@@ -722,7 +764,11 @@ def _aggregate_decision(rows: list[dict]) -> dict[str, Any]:
     return out
 
 
-def score_cohort(cases: Iterable[tuple[dict, dict | None]]) -> dict[str, Any]:
+def score_cohort(
+    cases: Iterable[tuple[dict, dict | None]],
+    *,
+    weights: dict[str, float] = CASE_COMPONENT_WEIGHTS,
+) -> dict[str, Any]:
     """Score a whole cohort and return the aggregate metrics.
 
     ``cases`` pairs each ground-truth record with its prediction record, or
@@ -732,19 +778,20 @@ def score_cohort(cases: Iterable[tuple[dict, dict | None]]) -> dict[str, Any]:
     order-independent, but matching the order keeps diffs readable.
 
     The returned dict has the same keys as the official ``aggregate_metrics``,
-    with ``mean_rationale_score`` pinned to ``None``.
+    with ``mean_rationale_score`` pinned to ``None``. ``mean_case_score`` and
+    ``ranking_score`` are deflated by the omitted rationale term under the
+    default ``weights``; see :data:`CASE_COMPONENT_WEIGHTS`.
     """
-    rows = [score_case(gt, pred) for gt, pred in cases]
-    if not rows:
-        return {"n_cases": 0}
-    if all(r.get("task") == "recurrence" for r in rows):
-        return _aggregate_recurrence(rows)
-    return _aggregate_decision(rows)
+    return score_cohort_rows(cases, weights=weights)[1]
 
 
-def score_cohort_rows(cases: Iterable[tuple[dict, dict | None]]) -> tuple[list[dict], dict[str, Any]]:
+def score_cohort_rows(
+    cases: Iterable[tuple[dict, dict | None]],
+    *,
+    weights: dict[str, float] = CASE_COMPONENT_WEIGHTS,
+) -> tuple[list[dict], dict[str, Any]]:
     """``score_cohort`` but keeping the per-case rows, for error analysis."""
-    rows = [score_case(gt, pred) for gt, pred in cases]
+    rows = [score_case(gt, pred, weights=weights) for gt, pred in cases]
     if not rows:
         return rows, {"n_cases": 0}
     if all(r.get("task") == "recurrence" for r in rows):

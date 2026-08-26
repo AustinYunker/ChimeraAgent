@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from chimera.contract.io import CaseInputs
+from chimera.scoring import fast
 from chimera.eval.cv import (
     Row,
     cross_validate,
@@ -68,9 +69,16 @@ def test_a_memorising_model_scores_at_chance_out_of_fold():
     """The guard against a leaking harness.
 
     This model is a dictionary from case id to the right answer. If the harness ever
-    fit on the evaluation fold it would score a perfect 1.0; held out properly it
-    knows nothing about the cases it is asked about.
+    fit on the evaluation fold it would score at the attainable ceiling; held out
+    properly it knows nothing about the cases it is asked about.
+
+    The ceiling is not 1.0. ``_PERFECT_REASONING`` maxes out every deterministic
+    component, but the fast scorer omits the rationale term it cannot model, so a
+    flawless case scores ``sum(CASE_COMPONENT_WEIGHTS.values())`` and the ranking
+    metric tops out midway between that and a perfect decision F1. Deriving the
+    bound keeps this test honest under either weighting.
     """
+    ceiling = (sum(fast.CASE_COMPONENT_WEIGHTS.values()) + 1.0) / 2.0
     rows = _synthetic_rows()
 
     def fit(train):
@@ -85,7 +93,10 @@ def test_a_memorising_model_scores_at_chance_out_of_fold():
     # Same model, but fitted on everything including what it is scored on.
     leaked = cross_validate(1, rows, lambda train: fit(rows), predict, folds=5, repeats=1)
 
-    assert leaked["mean"] > 0.95, "the leaked control should be near-perfect"
+    assert leaked["mean"] > ceiling - 0.05, (
+        f"the leaked control scored {leaked['mean']:.3f} against a ceiling of "
+        f"{ceiling:.3f}; it should be near-perfect"
+    )
     assert honest["mean"] < 0.70, (
         f"memorising model scored {honest['mean']:.3f} out of fold; the harness is leaking"
     )

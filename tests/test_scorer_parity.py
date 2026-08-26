@@ -72,7 +72,10 @@ def _official_aggregate(ev, cases: list[tuple[dict, dict | None]]) -> dict:
 
 def _compare_cohort(ev, cases: list[tuple[dict, dict | None]]) -> None:
     theirs = _official_aggregate(ev, cases)
-    ours = fast.score_cohort(cases)
+    # ``_official_aggregate`` passes ``rationale_judge=None``, so the official
+    # scorer takes its judge-off branch. Match it explicitly: the fast scorer
+    # defaults to the live judge-on component weights instead.
+    ours = fast.score_cohort(cases, weights=fast.CASE_COMPONENT_WEIGHTS_JUDGE_OFF)
 
     extra = set(ours) - set(theirs)
     assert not extra, f"fast scorer invents keys the official one lacks: {sorted(extra)}"
@@ -278,7 +281,7 @@ def test_per_case_parity_on_randomised_cases(evaluator_with_mapping, task):
     for gt, pred in _cohort(task, 400, seed=99):
         theirs = ev.evaluate_case(gt, pred, None, None)
         ev.attach_kappa_fields(theirs, gt, pred)
-        ours = fast.score_case(gt, pred)
+        ours = fast.score_case(gt, pred, weights=fast.CASE_COMPONENT_WEIGHTS_JUDGE_OFF)
         for key in compared:
             if key not in theirs:
                 continue
