@@ -17,8 +17,9 @@ of its output affects Harrell's C-index.
 from chimera.models.guidelines import (
     LEAVES_BY_TASK,
     capra_s,
+    capra_s_points,
     eau_risk,
     stratum,
 )
 
-__all__ = ["LEAVES_BY_TASK", "capra_s", "eau_risk", "stratum"]
+__all__ = ["LEAVES_BY_TASK", "capra_s", "capra_s_points", "eau_risk", "stratum"]

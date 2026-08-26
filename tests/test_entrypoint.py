@@ -234,7 +234,11 @@ def test_prior_free_text_is_non_empty_and_case_specific():
     text = predictor.predict(_case(1, {"radiology_report": "x"})).reasoning.free_text
     assert text.strip()
     # It should quote something real from the case rather than being boilerplate.
-    assert "7.4" in text and "64" in text
+    assert "7.4" in text and "PI-RADS 4" in text
+    # ...but not `age`, which the judge cannot corroborate: its evidence context is
+    # the clinical-data socket, and the reports state the age in 22% / 7% of Task 1
+    # and Task 2 cases. See `chimera.predictors.rationale.CITABLE`.
+    assert "64" not in text
 
 
 # --------------------------------------------------------------------------- #

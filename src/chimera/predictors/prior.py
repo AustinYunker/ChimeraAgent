@@ -35,29 +35,19 @@ from chimera.contract.types import (
     Reasoning,
     RecurrencePrediction,
 )
-
-PARAMS_RESOURCE = "prior_params.json"
-
-#: Structured-prompt fields worth naming in the rationale, with how to render
-#: them. Only fields actually present and non-null are used -- the rationale
-#: must never assert a value we did not read.
-_RATIONALE_FIELDS: tuple[tuple[str, str], ...] = (
-    ("pirads", "PI-RADS {}"),
-    ("psa", "PSA {} ng/mL"),
-    ("psad", "PSA density {}"),
-    ("age", "age {}"),
-    ("bx_isup", "ISUP {}"),
-    ("ct", "clinical stage {}"),
+from chimera.evidence.reports import extract_reports
+from chimera.evidence.structured import StructuredFeatures, extract_structured
+from chimera.models.guidelines import eau_risk
+# Submodule form, not ``from chimera.predictors import rationale``: the package
+# __init__ imports this module, so the package object is only half-built while
+# this line runs and an attribute lookup on it would fail.
+from chimera.predictors.rationale import (
+    biopsy_rationale,
+    recurrence_rationale,
+    treatment_rationale,
 )
 
-_DECISION_PHRASE = {
-    "yes": "Biopsy recommended",
-    "no": "Biopsy not recommended",
-    "active_surveillance": "Active surveillance recommended",
-    "continued_surveillance": "Continued surveillance recommended",
-    "watchful_waiting": "Watchful waiting recommended",
-    "active_treatment": "Active treatment recommended",
-}
+PARAMS_RESOURCE = "prior_params.json"
 
 
 def load_params(path: Any | None = None) -> dict[str, Any]:
@@ -132,35 +122,23 @@ class PriorPredictor:
 
     # -- rationale ---------------------------------------------------------- #
 
-    def _facts(self, case: CaseInputs) -> list[str]:
-        prompt = case.structured_prompt if isinstance(case.structured_prompt, dict) else {}
-        facts = []
-        for key, template in _RATIONALE_FIELDS:
-            value = prompt.get(key)
-            if value is not None and value != "":
-                facts.append(template.format(value))
-        return facts
-
     def free_text(
-        self, case: CaseInputs, decision: str, weights: dict[str, str], retrieved: dict[str, Any]
+        self, task: int, features: StructuredFeatures, decision: str, confidence: str
     ) -> str:
-        """A short rationale asserting only things this case actually supports."""
-        parts = [_DECISION_PHRASE.get(decision, decision.replace("_", " ").capitalize()) + "."]
+        """A short clinical rationale, in the register the judge scores against.
 
-        if facts := self._facts(case):
-            parts.append("Case features: " + ", ".join(facts) + ".")
+        Delegates to :mod:`chimera.predictors.rationale`, which owns the reasons
+        behind every choice in the wording -- chiefly that the judge's evidence
+        context is the clinical-data socket and not the patient card, so a card
+        value the reports never state reads to it as a hallucination.
 
-        drivers = [v for v, w in weights.items() if w == "decisive"]
-        drivers += [v for v, w in weights.items() if w == "important"]
-        if drivers:
-            parts.append("Weighted most heavily: " + ", ".join(drivers) + ".")
-
-        if retrieved:
-            parts.append("Evidence consulted: " + ", ".join(retrieved) + ".")
-        else:
-            parts.append("Decided from the structured patient record without section retrieval.")
-
-        return " ".join(parts)
+        Takes the already-extracted features rather than the case, because
+        extraction may read narrative sections and the caller is the one that
+        has to declare them.
+        """
+        if task == 1:
+            return biopsy_rationale(features, decision, confidence)
+        return treatment_rationale(features, decision, confidence, eau_risk(features))
 
     # -- Predictor protocol -------------------------------------------------- #
 
@@ -179,14 +157,17 @@ class PriorPredictor:
         event = params.get("event")
         event = event if event in (0, 1) else 0
 
-        facts = self._facts(case)
-        text = (
-            "Predicted time to biochemical recurrence or last follow-up: "
-            f"{months:.0f} months (event={event}). "
-            + (f"Case features: {', '.join(facts)}. " if facts else "")
-            + "Cohort-level prior; this task is ranked on the ordering of predicted "
-            "times rather than on this rationale."
-        )
+        # The months are a cohort constant here, but the rationale still has to
+        # describe *this* specimen: the recurrence rubric scores clinical
+        # specificity against the reports, which we are handed either way.
+        #
+        # No CAPRA-S, though. `GuidelinePredictor` passes the score because the
+        # score is what orders its cases; this predictor's ordering is a
+        # constant, and saying otherwise would be the one thing the rubric
+        # actually punishes -- a rationale that does not match the prediction.
+        pathology = extract_reports(case)
+        psa = extract_structured(case).psa
+        text = recurrence_rationale(pathology, psa, months, None)
         return RecurrencePrediction(
             months_to_recurrence=months, event=event, free_text=text
         )
@@ -205,8 +186,17 @@ class PriorPredictor:
 
         weights = _normalise_weights(case.task, params.get("variable_weights"))
 
+        features = extract_structured(case)
+
         policy = params.get("reveal_sequence")
-        policy = policy if isinstance(policy, list) else []
+        policy = list(policy) if isinstance(policy, list) else []
+        # Sections extraction had to read to build the features. Empty whenever
+        # the patient card answered everything, which on the current release is
+        # every Task 1 and Task 2 case -- but reveal honesty runs both ways, and
+        # under-declaring what we read is as wrong as over-declaring it.
+        for section in features.evidence_sections:
+            if section not in policy:
+                policy.append(section)
         retrieved = self.retrieve(case, policy)
 
         return DecisionPrediction(
@@ -217,6 +207,6 @@ class PriorPredictor:
                 variable_weights=weights,
                 # Exactly what we read -- never the policy we asked for.
                 reveal_sequence=list(retrieved),
-                free_text=self.free_text(case, decision, weights, retrieved),
+                free_text=self.free_text(case.task, features, decision, confidence),
             ),
         )

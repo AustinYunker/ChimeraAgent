@@ -103,6 +103,14 @@ def ct_ordinal(prompt: dict[str, Any]) -> int | None:
     return _CT_ORDINAL.get(stage) if stage else None
 
 
+def ct_stage_name(ordinal: int | None) -> str | None:
+    """Invert :func:`ct_ordinal`. ``StructuredFeatures`` keeps only the ordinal,
+    since that is what the models want, but the rationale has to say ``cT2a``."""
+    if ordinal is None or not 0 <= ordinal < len(_CT_ORDER):
+        return None
+    return _CT_ORDER[ordinal]
+
+
 def dre(prompt: dict[str, Any]) -> str | None:
     """Normalised DRE category, or ``None`` when absent or free text.
 

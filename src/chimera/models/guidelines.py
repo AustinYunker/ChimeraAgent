@@ -76,14 +76,20 @@ def _capra_gleason_points(primary: int | None, secondary: int | None) -> int | N
     return 3
 
 
-def capra_s(pathology: SurgicalPathology, psa: float | None) -> float | None:
-    """CAPRA-S on its native 0-12 scale; higher means higher recurrence risk.
+def capra_s_points(
+    pathology: SurgicalPathology, psa: float | None
+) -> tuple[int, int] | None:
+    """Raw CAPRA-S points ``(earned, assessable)``, before any rescaling.
 
-    Returns ``None`` only when nothing at all could be read. When *some* components
-    are unreadable the score is computed over the rest and **rescaled to the full
-    range**, so a case missing a component is not silently ranked as lower-risk than
-    a fully-reported one. That matters for the C-index, which compares cases against
-    each other rather than against a threshold.
+    ``assessable`` is the sum of the maxima of the components this specimen
+    actually reported, so it is :data:`CAPRA_S_MAX` only when every component
+    parsed. Returns ``None`` when none of them did.
+
+    Split out from :func:`capra_s` because the two callers want different things.
+    The C-index wants the rescaled score; the rationale has to say *how much of
+    the nomogram was readable*, since quoting a rescaled value as though it were
+    a raw one overstates the evidence -- a specimen reporting nothing but a PSA
+    over 20 rescales to a flat 12 of 12.
 
     Nodal status of :data:`~chimera.evidence.reports.NOT_ASSESSED` (pNx) scores zero
     points and still counts toward the denominator, matching the nomogram, which
@@ -122,6 +128,22 @@ def capra_s(pathology: SurgicalPathology, psa: float | None) -> float | None:
 
     if possible == 0:
         return None
+    return earned, possible
+
+
+def capra_s(pathology: SurgicalPathology, psa: float | None) -> float | None:
+    """CAPRA-S on its native 0-12 scale; higher means higher recurrence risk.
+
+    Returns ``None`` only when nothing at all could be read. When *some* components
+    are unreadable the score is computed over the rest and **rescaled to the full
+    range**, so a case missing a component is not silently ranked as lower-risk than
+    a fully-reported one. That matters for the C-index, which compares cases against
+    each other rather than against a threshold.
+    """
+    points = capra_s_points(pathology, psa)
+    if points is None:
+        return None
+    earned, possible = points
     return earned * CAPRA_S_MAX / possible
 
 
