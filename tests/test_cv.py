@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from chimera.contract.io import CaseInputs
+from chimera.mcp.client import DirectStore, McpSession
 from chimera.scoring import fast
 from chimera.eval.cv import (
     Row,
@@ -57,8 +58,14 @@ def _synthetic_rows(n: int = 40) -> list[Row]:
             neural_representations={},
         )
         rows.append(Row(case=case, gt={"case_id": f"C{i:03d}", "biopsy_decision": label,
-                                       **_PERFECT_REASONING}))
+                                       **_PERFECT_REASONING},
+                        store=DirectStore(case)))
     return rows
+
+
+def _row(case: CaseInputs, gt: dict) -> Row:
+    """A row over an in-memory case, so its store is the in-process one."""
+    return Row(case=case, gt=gt, store=DirectStore(case))
 
 
 def _record(case_id: str, decision: str) -> dict:
@@ -84,7 +91,7 @@ def test_a_memorising_model_scores_at_chance_out_of_fold():
     def fit(train):
         return {r.case_id: r.gt["biopsy_decision"] for r in train}
 
-    def predict(case, table):
+    def predict(case, store, table):
         # Unseen case ids fall back to a fixed guess.
         return _record(case.case_id, table.get(case.case_id, "yes"))
 
@@ -109,7 +116,7 @@ def test_training_and_evaluation_rows_never_overlap():
     def fit(train):
         return {"train_ids": {r.case_id for r in train}}
 
-    def predict(case, params):
+    def predict(case, store, params):
         seen.append(({case.case_id}, params["train_ids"]))
         return _record(case.case_id, "yes")
 
@@ -123,7 +130,7 @@ def test_every_case_is_predicted_exactly_once_per_repeat():
     paired = out_of_fold_records(
         1, rows,
         lambda train: None,
-        lambda case, p: _record(case.case_id, "yes"),
+        lambda case, store, p: _record(case.case_id, "yes"),
         folds=5, seed=0,
     )
     ids = [pred["case_id"] for _, pred in paired]
@@ -139,7 +146,7 @@ def test_repeats_vary_the_split_and_report_a_spread():
         # Sensitive to the split, so different seeds must give different answers.
         return "yes" if sum(1 for r in train if r.gt["biopsy_decision"] == "yes") % 2 else "no"
 
-    def predict(case, decision):
+    def predict(case, store, decision):
         return _record(case.case_id, decision)
 
     result = cross_validate(1, rows, fit, predict, folds=5, repeats=4)
@@ -148,10 +155,10 @@ def test_repeats_vary_the_split_and_report_a_spread():
 
 
 def test_stratification_key_reads_each_task_correctly():
-    row1 = Row(CaseInputs(1, "a", {}, {}, {}), {"case_id": "a", "biopsy_decision": "no"})
-    row2 = Row(CaseInputs(2, "b", {}, {}, {}),
+    row1 = _row(CaseInputs(1, "a", {}, {}, {}), {"case_id": "a", "biopsy_decision": "no"})
+    row2 = _row(CaseInputs(2, "b", {}, {}, {}),
                {"case_id": "b", "treatment_recommendation": {"primary": "active_treatment"}})
-    row3 = Row(CaseInputs(3, "c", {}, {}, {}),
+    row3 = _row(CaseInputs(3, "c", {}, {}, {}),
                {"case_id": "c", "event": 1, "months_to_recurrence": 12.0})
     assert stratification_key(1, row1) == "no"
     assert stratification_key(2, row2) == "active_treatment"
@@ -166,7 +173,7 @@ def test_splits_survive_a_class_too_rare_to_stratify():
     result = cross_validate(
         1, rows,
         lambda train: None,
-        lambda case, p: _record(case.case_id, "yes"),
+        lambda case, store, p: _record(case.case_id, "yes"),
         folds=5, repeats=1,
     )
     assert result["n"] == 20
@@ -181,7 +188,8 @@ def test_load_rows_pairs_real_cases_with_their_labels(task):
     """
     if not (CASES / f"task{task}").is_dir():
         pytest.skip("release cohort not built; run chimera.cli.make_release_cases")
-    rows = load_rows(CASES, GT, task)
+    with McpSession.for_cohort(CASES) as session:
+        rows = load_rows(CASES, GT, task, session)
     expected = {1: 91, 2: 72, 3: 75}[task]
     assert len(rows) == expected
     assert all(r.gt["case_id"] == r.case.case_id for r in rows)

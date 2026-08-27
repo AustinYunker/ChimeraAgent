@@ -21,7 +21,14 @@ dependencies = [
 # and are deliberately not installed, since we always score with
 # USE_RATIONALE_JUDGE=0. None of this reaches the submission image, which
 # installs with --no-deps.
-dev = ["pytest", "requests>=2.31.0"]
+#
+# `mcp` is the official SDK. It is a *test* dependency only: our client and
+# server are hand-rolled stdlib precisely because the SDK's own dependency tree
+# (pydantic, anyio, httpx, starlette, uvicorn) cannot go in the image. It is
+# here so tests/test_mcp_conformance.py can drive our server with the reference
+# client, which is the only evidence that "we speak MCP" is a protocol claim
+# rather than a naming convention.
+dev = ["pytest", "requests>=2.31.0", "mcp>=1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -22,6 +22,7 @@ from chimera.contract import spec
 from chimera.contract.io import CaseInputs
 from chimera.contract.types import DecisionPrediction, Reasoning, RecurrencePrediction
 from chimera.evidence import extract_reports, extract_structured
+from chimera.mcp.client import ClinicalStore
 from chimera.models import stratified
 from chimera.models.guidelines import capra_s_points
 from chimera.predictors.prior import PriorPredictor, _normalise_weights
@@ -47,7 +48,7 @@ class GuidelinePredictor(PriorPredictor):
 
     # -- Task 1 / 2 ---------------------------------------------------------- #
 
-    def _predict_decision(self, case: CaseInputs) -> DecisionPrediction:
+    def _predict_decision(self, case: CaseInputs, store: ClinicalStore) -> DecisionPrediction:
         task = case.task
         entry = self.params.get(f"task{task}") or {}
         allowed = spec.BIOPSY_DECISIONS if task == 1 else spec.TREATMENT_DECISIONS
@@ -57,7 +58,7 @@ class GuidelinePredictor(PriorPredictor):
             "leaf_labels": entry.get("leaf_labels") or {},
             "reasoning": entry.get("reasoning") or {},
         }
-        decision, reasoning = stratified.predict_decision(case, model)
+        decision, reasoning = stratified.predict_decision(case, store, model)
         if decision not in allowed:
             decision = allowed[0]
 
@@ -66,7 +67,7 @@ class GuidelinePredictor(PriorPredictor):
             confidence = "borderline"
         weights = _normalise_weights(task, reasoning.get("variable_weights"))
 
-        features = extract_structured(case)
+        features = extract_structured(case, store)
 
         policy = reasoning.get("reveal_sequence")
         policy = list(policy) if isinstance(policy, list) else []
@@ -79,7 +80,7 @@ class GuidelinePredictor(PriorPredictor):
         for section in features.evidence_sections:
             if section not in policy:
                 policy.append(section)
-        retrieved = self.retrieve(case, policy)
+        retrieved = self.retrieve(store, policy)
 
         return DecisionPrediction(
             task=task,
@@ -99,15 +100,15 @@ class GuidelinePredictor(PriorPredictor):
 
     # -- Task 3 -------------------------------------------------------------- #
 
-    def _predict_recurrence(self, case: CaseInputs) -> RecurrencePrediction:
+    def _predict_recurrence(self, case: CaseInputs, store: ClinicalStore) -> RecurrencePrediction:
         """CAPRA-S ordering. Nothing here is fitted, so no parameters are consulted.
 
         Only the ordering of predicted months reaches the leaderboard; the absolute
         scale is free, and ``event`` does not enter the C-index at all.
         """
-        months = stratified.predict_months(case)
-        pathology = extract_reports(case)
-        psa = extract_structured(case).psa
+        months = stratified.predict_months(case, store)
+        pathology = extract_reports(store)
+        psa = extract_structured(case, store).psa
         # Naming the CAPRA-S *inputs* by their parsed values, not the factor list.
         # The recurrence rubric asks for "concrete post-operative prognostic
         # features actually present in the clinical inputs", and the judge reads

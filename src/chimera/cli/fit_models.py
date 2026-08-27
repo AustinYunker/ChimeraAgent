@@ -25,6 +25,7 @@ from typing import Any
 from chimera.cli.cross_validate import _constant_fit, _guideline_fit
 from chimera.cli.fit_prior import available_sections
 from chimera.eval.cv import cross_validate, load_rows
+from chimera.mcp.client import McpSession
 from chimera.models import stratified
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -32,6 +33,34 @@ DEFAULT_CASES = REPO_ROOT / "work" / "train" / "cases"
 DEFAULT_GT = REPO_ROOT / "work" / "train" / "ground_truth"
 DEFAULT_DATA = REPO_ROOT / "data" / "train_release"
 DEFAULT_OUT = REPO_ROOT / "src" / "chimera" / "predictors" / "guideline_params.json"
+
+
+def _fit_task(args, task: int, rows) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fit one task and score it: the fitted params, and the record written to JSON."""
+    sections = available_sections(args.data, task)
+    params = stratified.fit(task, rows, list(sections))
+
+    entry: dict[str, Any] = {
+        "leaf_labels": params["leaf_labels"],
+        "reasoning": params["reasoning"],
+        "n_labeled": len(rows),
+        "available_sections": list(sections),
+    }
+
+    if not args.skip_cv:
+        fit_fn, predict_fn = _guideline_fit(task, sections)
+        guided = cross_validate(task, rows, fit_fn, predict_fn, repeats=args.repeats)
+        const_fit, const_predict = _constant_fit(task, sections)
+        baseline = cross_validate(task, rows, const_fit, const_predict, repeats=args.repeats)
+        entry["cv_score"] = guided["mean"]
+        entry["cv_sd"] = guided["sd"]
+        entry["cv_baseline_constant"] = baseline["mean"]
+        entry["cv_beats_baseline_beyond_noise"] = bool(
+            guided["mean"] is not None
+            and baseline["mean"] is not None
+            and (guided["mean"] - baseline["mean"]) > max(guided["sd"], baseline["sd"])
+        )
+    return params, entry
 
 
 def main() -> int:
@@ -57,65 +86,43 @@ def main() -> int:
         )
     }
 
-    for task in (1, 2):
-        rows = load_rows(args.cases, args.gt, task)
-        if not rows:
-            print(f"task{task}: no labeled rows under {args.gt}")
-            continue
-        sections = available_sections(args.data, task)
-        params = stratified.fit(task, rows, list(sections))
+    with McpSession.for_cohort(args.cases) as session:
+        for task in (1, 2):
+            rows = load_rows(args.cases, args.gt, task, session)
+            if not rows:
+                print(f"task{task}: no labeled rows under {args.gt}")
+                continue
+            params, entry = _fit_task(args, task, rows)
+            fitted[f"task{task}"] = entry
 
-        entry: dict[str, Any] = {
-            "leaf_labels": params["leaf_labels"],
-            "reasoning": params["reasoning"],
-            "n_labeled": len(rows),
-            "available_sections": list(sections),
+            print(f"=== task{task} (n={len(rows)}) ===")
+            for leaf, label in sorted(params["leaf_labels"].items()):
+                print(f"  {leaf:<24} -> {label}")
+            print(f"  reasoning fitted for  : {sorted(k for k in params['reasoning'])}")
+            if not args.skip_cv:
+                print(f"  cv {entry['cv_score']:.4f} +/- {entry['cv_sd']:.4f} "
+                      f"(constant {entry['cv_baseline_constant']:.4f}) "
+                      f"beats-noise={entry['cv_beats_baseline_beyond_noise']}")
+            print()
+
+        # Task 3 has nothing to fit; the record exists so the file documents all three.
+        rows3 = load_rows(args.cases, args.gt, 3, session)
+        entry3: dict[str, Any] = {
+            "model": "capra_s",
+            "fitted": False,
+            "n_labeled": len(rows3),
+            "months_at_zero_risk": stratified.MONTHS_AT_ZERO_RISK,
+            "months_per_capra_point": stratified.MONTHS_PER_CAPRA_POINT,
         }
-
-        if not args.skip_cv:
-            fit_fn, predict_fn = _guideline_fit(task, sections)
-            guided = cross_validate(task, rows, fit_fn, predict_fn, repeats=args.repeats)
-            const_fit, const_predict = _constant_fit(task, sections)
-            baseline = cross_validate(task, rows, const_fit, const_predict, repeats=args.repeats)
-            entry["cv_score"] = guided["mean"]
-            entry["cv_sd"] = guided["sd"]
-            entry["cv_baseline_constant"] = baseline["mean"]
-            entry["cv_beats_baseline_beyond_noise"] = bool(
-                guided["mean"] is not None
-                and baseline["mean"] is not None
-                and (guided["mean"] - baseline["mean"]) > max(guided["sd"], baseline["sd"])
+        if rows3 and not args.skip_cv:
+            result = cross_validate(
+                3, rows3, lambda train: None, stratified.predict_recurrence_record, repeats=1
             )
-
-        fitted[f"task{task}"] = entry
-
-        print(f"=== task{task} (n={len(rows)}) ===")
-        for leaf, label in sorted(params["leaf_labels"].items()):
-            print(f"  {leaf:<24} -> {label}")
-        print(f"  reasoning fitted for  : {sorted(k for k in params['reasoning'])}")
-        if not args.skip_cv:
-            print(f"  cv {entry['cv_score']:.4f} +/- {entry['cv_sd']:.4f} "
-                  f"(constant {entry['cv_baseline_constant']:.4f}) "
-                  f"beats-noise={entry['cv_beats_baseline_beyond_noise']}")
-        print()
-
-    # Task 3 has nothing to fit; the record exists so the file documents all three.
-    rows3 = load_rows(args.cases, args.gt, 3)
-    entry3: dict[str, Any] = {
-        "model": "capra_s",
-        "fitted": False,
-        "n_labeled": len(rows3),
-        "months_at_zero_risk": stratified.MONTHS_AT_ZERO_RISK,
-        "months_per_capra_point": stratified.MONTHS_PER_CAPRA_POINT,
-    }
-    if rows3 and not args.skip_cv:
-        result = cross_validate(
-            3, rows3, lambda train: None, stratified.predict_recurrence_record, repeats=1
-        )
-        entry3["cv_score"] = result["mean"]
-        entry3["cv_sd"] = 0.0
-        print(f"=== task3 (n={len(rows3)}) ===")
-        print(f"  CAPRA-S, nothing fitted -> c-index {result['mean']:.4f}\n")
-    fitted["task3"] = entry3
+            entry3["cv_score"] = result["mean"]
+            entry3["cv_sd"] = 0.0
+            print(f"=== task3 (n={len(rows3)}) ===")
+            print(f"  CAPRA-S, nothing fitted -> c-index {result['mean']:.4f}\n")
+        fitted["task3"] = entry3
 
     if args.dry_run:
         print("--dry-run: not written")

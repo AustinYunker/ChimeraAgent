@@ -23,6 +23,7 @@ from typing import Any
 
 from chimera.contract.io import CaseInputs
 from chimera.evidence.notes import prior_biopsy_from_notes
+from chimera.mcp.client import ClinicalStore
 
 #: Clinical T stage, ordered. `cTx` means "not assessable" and is not a stage, so it
 #: maps to ``None`` rather than to a low value -- treating unknown as early-stage
@@ -212,10 +213,15 @@ class StructuredFeatures:
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
-def extract_structured(case: CaseInputs) -> StructuredFeatures:
+def extract_structured(case: CaseInputs, store: ClinicalStore | None = None) -> StructuredFeatures:
     """Read the patient card, falling back to the notes for what it no longer says.
 
     Never raises; unreadable fields stay ``None``.
+
+    The card itself is not masked -- it is the panel the urologist always saw --
+    so it is read straight off the case. ``store`` is needed only for the notes
+    fallback below, and omitting it simply disables that fallback: callers that
+    only want card features need no MCP session.
 
     The only fallback is prior-biopsy status, and it fires only when both are true:
     the card omits ``bx`` entirely, and this task's model actually branches on it
@@ -234,8 +240,8 @@ def extract_structured(case: CaseInputs) -> StructuredFeatures:
 
     bx = prior_biopsy(prompt)
     evidence_sections: tuple[str, ...] = ()
-    if bx is None and case.task in _TASKS_USING_PRIOR_BIOPSY:
-        bx, evidence_sections = prior_biopsy_from_notes(case.clinical_data)
+    if bx is None and store is not None and case.task in _TASKS_USING_PRIOR_BIOPSY:
+        bx, evidence_sections = prior_biopsy_from_notes(store)
 
     return StructuredFeatures(
         age=as_float(prompt.get("age")),

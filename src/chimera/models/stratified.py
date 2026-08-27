@@ -33,6 +33,7 @@ from typing import Any, Sequence
 from chimera.contract import spec
 from chimera.contract.io import CaseInputs
 from chimera.evidence import extract_reports, extract_structured
+from chimera.mcp.client import ClinicalStore
 from chimera.models.guidelines import LEAVES_BY_TASK, capra_s, stratum
 
 #: Predicted months for a case whose risk score is unreadable. Mid-range, so an
@@ -124,7 +125,7 @@ def fit_leaf_labels(
     decisions = spec.BIOPSY_DECISIONS if task == 1 else spec.TREATMENT_DECISIONS
 
     # Precompute each row's leaf once; stratum() is called O(candidates x rows) below.
-    row_leaves = [stratum(task, extract_structured(r.case)) for r in rows]
+    row_leaves = [stratum(task, extract_structured(r.case, r.store)) for r in rows]
     present = set(row_leaves)
     seen = [leaf for leaf in leaves if leaf in present]
 
@@ -217,7 +218,7 @@ def required_reveals(rows: Sequence[Any]) -> list[str]:
 
     seen: set[str] = set()
     for row in rows:
-        seen.update(extract_structured(row.case).evidence_sections)
+        seen.update(extract_structured(row.case, row.store).evidence_sections)
     return [s for s in spec.REVEAL_SECTIONS if s in seen]
 
 
@@ -363,10 +364,12 @@ def reasoning_for(params: dict[str, Any], decision: str) -> dict[str, Any]:
     return reasoning.get(decision) or reasoning.get("__default__") or {}
 
 
-def predict_decision(case: CaseInputs, params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def predict_decision(
+    case: CaseInputs, store: ClinicalStore, params: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
     """The decision for ``case`` and the reasoning constants that go with it."""
     task = params["task"]
-    features = extract_structured(case)
+    features = extract_structured(case, store)
     leaf = stratum(task, features)
     labels = params.get("leaf_labels") or {}
     decisions = spec.BIOPSY_DECISIONS if task == 1 else spec.TREATMENT_DECISIONS
@@ -376,10 +379,12 @@ def predict_decision(case: CaseInputs, params: dict[str, Any]) -> tuple[str, dic
     return decision, reasoning_for(params, decision)
 
 
-def predict_record(case: CaseInputs, params: dict[str, Any]) -> dict[str, Any]:
+def predict_record(
+    case: CaseInputs, store: ClinicalStore, params: dict[str, Any]
+) -> dict[str, Any]:
     """Flat scorer-shaped record, for the CV harness."""
     task = params["task"]
-    decision, reasoning = predict_decision(case, params)
+    decision, reasoning = predict_decision(case, store, params)
     return decision_record(task, case.case_id, decision, reasoning)
 
 
@@ -387,19 +392,21 @@ def predict_record(case: CaseInputs, params: dict[str, Any]) -> dict[str, Any]:
 # Task 3
 # --------------------------------------------------------------------------- #
 
-def predict_months(case: CaseInputs) -> float:
+def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
     """Predicted months to recurrence, ordered by CAPRA-S. Nothing is fitted."""
-    score = capra_s(extract_reports(case), extract_structured(case).psa)
+    score = capra_s(extract_reports(store), extract_structured(case, store).psa)
     if score is None:
         return FALLBACK_MONTHS
     months = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * score
     return max(1.0, months)
 
 
-def predict_recurrence_record(case: CaseInputs, params: Any = None) -> dict[str, Any]:
+def predict_recurrence_record(
+    case: CaseInputs, store: ClinicalStore, params: Any = None
+) -> dict[str, Any]:
     return {
         "case_id": case.case_id,
-        "months_to_recurrence": predict_months(case),
+        "months_to_recurrence": predict_months(case, store),
         # The event flag does not affect the C-index; the cohort is 56/75 censored.
         "event": 0,
     }

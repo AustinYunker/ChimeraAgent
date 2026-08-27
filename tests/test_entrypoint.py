@@ -26,6 +26,7 @@ from chimera.cli.check_outputs import check_case
 from chimera.contract import spec
 from chimera.contract.io import CaseInputs
 from chimera.contract.types import validate
+from chimera.mcp.client import DirectStore
 from chimera.predictors.prior import PriorPredictor, load_params
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -155,6 +156,119 @@ def test_fallback_prediction_is_valid_for_every_task():
 
 
 # --------------------------------------------------------------------------- #
+# When the transport is what fails
+# --------------------------------------------------------------------------- #
+
+def _sockets(out: Path, task: int) -> dict[str, str]:
+    """The two written result sockets, as text, keyed by role."""
+    return {
+        role: (out / spec.OUTPUT_SOCKETS[task][role][1]).read_text()
+        for role in ("decision", "reasoning")
+    }
+
+
+def _run_in_process(input_dir: Path, output_dir: Path, monkeypatch) -> int:
+    """``inference.run()`` against explicit paths.
+
+    In process rather than as a subprocess because these tests have to break the
+    MCP transport from the inside; the socket paths are module constants, so
+    redirecting them is the whole of the difference from a container run.
+    """
+    import inference
+
+    monkeypatch.setattr(inference, "INPUT_PATH", input_dir)
+    monkeypatch.setattr(inference, "OUTPUT_PATH", output_dir)
+    return inference.run()
+
+
+@pytest.mark.parametrize("task", [1, 2, 3])
+def test_a_dead_server_costs_provenance_not_quality(tmp_path, monkeypatch, caplog, task):
+    """A lost subprocess must not cost the case.
+
+    A crashed case is not skipped by the evaluator -- it is scored against a
+    sentinel label and costs the true class its recall -- so the entrypoint
+    degrades to an in-process read of the same documents. What that loses is the
+    provenance, which is why it is logged at ERROR; what it must not lose is a
+    single point of the prediction.
+    """
+    import inference
+    from chimera.mcp.client import McpSession
+
+    case_dir = _fixture_case(task)
+    healthy = tmp_path / "healthy"
+    healthy.mkdir()
+    assert _run_in_process(case_dir, healthy, monkeypatch) == 0
+
+    def refuse_to_start(*args, **kwargs):
+        raise OSError("no such server")
+
+    monkeypatch.setattr(McpSession, "for_input", staticmethod(refuse_to_start))
+    degraded = tmp_path / "degraded"
+    degraded.mkdir()
+    with caplog.at_level("ERROR", logger="chimera.inference"):
+        assert _run_in_process(case_dir, degraded, monkeypatch) == 0
+
+    assert _sockets(degraded, task) == _sockets(healthy, task)
+    assert check_case(degraded, task) == []
+    assert any("MCP transport failed" in r.message for r in caplog.records), (
+        "the container took the fallback without saying so in the platform logs"
+    )
+
+
+def test_a_transport_that_dies_mid_case_is_retried_in_process(
+    tmp_path, monkeypatch, caplog
+):
+    """The handshake can succeed and the pipe still break on the third document.
+
+    The constant fallback below this retry produces a near-worthless prediction,
+    so one in-process retry is worth making even though a genuine defect will
+    simply fail twice and land there anyway.
+
+    Not every case reaches for a document: a stratum whose fitted reveal policy
+    is empty and whose patient card carries every variable the rule needs makes
+    no tool call, so there is no transport to break. Those cases are still
+    checked for output identity, but only the ones that actually retrieve can
+    demonstrate the retry -- and at least one must, or this test proves nothing.
+    """
+    from chimera.mcp.client import DirectStore, McpSession
+    from chimera.contract.io import read_case
+    from chimera.predictors import GuidelinePredictor
+
+    retried: list[int] = []
+    for task in (1, 2, 3):
+        case_dir = _fixture_case(task)
+        healthy = tmp_path / f"healthy{task}"
+        healthy.mkdir()
+        assert _run_in_process(case_dir, healthy, monkeypatch) == 0
+
+        probe = DirectStore(read_case(case_dir))
+        GuidelinePredictor().predict(read_case(case_dir), probe)
+        reads_documents = bool(probe.retrieved)
+
+        def die(self, name, arguments):
+            raise BrokenPipeError("server went away")
+
+        degraded = tmp_path / f"degraded{task}"
+        degraded.mkdir()
+        with monkeypatch.context() as broken:
+            broken.setattr(McpSession, "call_tool", die)
+            caplog.clear()
+            with caplog.at_level("ERROR", logger="chimera.inference"):
+                assert _run_in_process(case_dir, degraded, monkeypatch) == 0
+
+        assert _sockets(degraded, task) == _sockets(healthy, task)
+        logged = any("retrying with a direct read" in r.message for r in caplog.records)
+        assert logged == reads_documents, (
+            f"task{task}: retry logged={logged} but the case "
+            f"{'does' if reads_documents else 'does not'} retrieve documents"
+        )
+        if logged:
+            retried.append(task)
+
+    assert retried, "no fixture case retrieves a document, so no retry was exercised"
+
+
+# --------------------------------------------------------------------------- #
 # The fitted prior
 # --------------------------------------------------------------------------- #
 
@@ -166,6 +280,17 @@ def _case(task: int, clinical: dict) -> CaseInputs:
         clinical_data=clinical,
         neural_representations={},
     )
+
+
+def _predict(predictor, case: CaseInputs):
+    """Predict with an in-process store.
+
+    These cases are built in memory, so there is no directory for an MCP server
+    to serve. `DirectStore` enforces the same per-task tool registry and keeps
+    the same ledger, which is what these tests are about; `tests/test_mcp.py`
+    puts the same stores over the real wire.
+    """
+    return predictor.predict(case, DirectStore(case))
 
 
 def test_prior_params_match_the_contract_vocabularies():
@@ -187,7 +312,7 @@ def test_prior_params_match_the_contract_vocabularies():
 @pytest.mark.parametrize("task", [1, 2, 3])
 def test_prior_output_passes_contract_validation(task):
     sections = {s: "content" for s in spec.REVEAL_SECTIONS}
-    validate(PriorPredictor().predict(_case(task, sections)))
+    validate(_predict(PriorPredictor(), _case(task, sections)))
 
 
 def test_prior_declares_only_sections_it_actually_read():
@@ -200,14 +325,14 @@ def test_prior_declares_only_sections_it_actually_read():
     policy = load_params()["task1"]["reveal_sequence"]
     assert policy, "task 1's fitted policy should request at least one section"
 
-    with_evidence = PriorPredictor().predict(_case(1, {s: "content" for s in policy}))
+    with_evidence = _predict(PriorPredictor(), _case(1, {s: "content" for s in policy}))
     assert list(with_evidence.reasoning.reveal_sequence) == list(policy)
 
-    without = PriorPredictor().predict(_case(1, {}))
+    without = _predict(PriorPredictor(), _case(1, {}))
     assert without.reasoning.reveal_sequence == []
 
     # Present but empty is not evidence either.
-    blank = PriorPredictor().predict(_case(1, {s: "   " for s in policy}))
+    blank = _predict(PriorPredictor(), _case(1, {s: "   " for s in policy}))
     assert blank.reasoning.reveal_sequence == []
 
 
@@ -216,7 +341,7 @@ def test_prior_never_declares_a_section_outside_the_vocabulary():
     a reveal name; nothing outside the six-name vocabulary may be declared."""
     predictor = PriorPredictor()
     case = _case(1, {"surgical_pathology_report": "x", "radiology_report": "y"})
-    declared = predictor.predict(case).reasoning.reveal_sequence
+    declared = _predict(predictor, case).reasoning.reveal_sequence
     assert set(declared) <= set(spec.REVEAL_SECTIONS)
 
 
@@ -226,12 +351,12 @@ def test_prior_tolerates_a_corrupt_parameter_file():
                                                  "confidence": "very",
                                                  "variable_weights": {"nonsense": "huge"},
                                                  "reveal_sequence": "not-a-list"}})
-    validate(predictor.predict(_case(1, {"radiology_report": "x"})))
+    validate(_predict(predictor, _case(1, {"radiology_report": "x"})))
 
 
 def test_prior_free_text_is_non_empty_and_case_specific():
     predictor = PriorPredictor()
-    text = predictor.predict(_case(1, {"radiology_report": "x"})).reasoning.free_text
+    text = _predict(predictor, _case(1, {"radiology_report": "x"})).reasoning.free_text
     assert text.strip()
     # It should quote something real from the case rather than being boilerplate.
     assert "7.4" in text and "PI-RADS 4" in text
@@ -249,7 +374,7 @@ def test_check_case_rejects_an_out_of_vocabulary_decision(tmp_path):
     """A negative control: the CI gate must actually catch a bad submission."""
     from chimera.contract.io import write_case_outputs
 
-    write_case_outputs(tmp_path, PriorPredictor().predict(_case(1, {"radiology_report": "x"})))
+    write_case_outputs(tmp_path, _predict(PriorPredictor(), _case(1, {"radiology_report": "x"})))
     assert check_case(tmp_path, 1) == []
 
     (tmp_path / spec.OUTPUT_SOCKETS[1]["decision"][1]).write_text('"maybe"')
@@ -289,7 +414,7 @@ def test_guideline_output_passes_contract_validation(task):
     from chimera.predictors.guideline import GuidelinePredictor
 
     sections = {s: "content" for s in spec.REVEAL_SECTIONS}
-    validate(GuidelinePredictor().predict(_case(task, sections)))
+    validate(_predict(GuidelinePredictor(), _case(task, sections)))
 
 
 def test_guideline_routes_by_stratum_not_by_a_constant():
@@ -307,8 +432,8 @@ def test_guideline_routes_by_stratum_not_by_a_constant():
         structured_prompt={"bx": "Positive", "bx_isup": 5, "psa": 30.0, "ct": "cT3a"},
         clinical_data={}, neural_representations={},
     )
-    assert predictor.predict(low).decision == "continued_surveillance"
-    assert predictor.predict(high).decision == "active_treatment"
+    assert _predict(predictor, low).decision == "continued_surveillance"
+    assert _predict(predictor, high).decision == "active_treatment"
 
 
 def test_guideline_task3_orders_by_risk():
@@ -328,8 +453,8 @@ def test_guideline_task3_orders_by_risk():
         clinical_data={"surgical_pathology_report": SURGICAL_FOR_TEST},
         neural_representations={},
     )
-    b = GuidelinePredictor().predict(benign)
-    s = GuidelinePredictor().predict(severe)
+    b = _predict(GuidelinePredictor(), benign)
+    s = _predict(GuidelinePredictor(), severe)
     # Shorter predicted time = higher risk.
     assert s.months_to_recurrence < b.months_to_recurrence
     validate(b)
@@ -350,4 +475,4 @@ def test_guideline_degrades_to_a_valid_prediction_with_no_features():
 
     predictor = GuidelinePredictor()
     for task in (1, 2, 3):
-        validate(predictor.predict(_case(task, {})))
+        validate(_predict(predictor, _case(task, {})))

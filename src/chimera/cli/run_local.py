@@ -22,6 +22,7 @@ from pathlib import Path
 from chimera.contract.aggregate import job_pk, write_predictions_dump
 from chimera.contract.io import CaseInputs, read_case, write_case_outputs
 from chimera.contract.types import Prediction
+from chimera.mcp.client import McpSession
 from chimera.predictors import (
     ConstantPredictor,
     GuidelinePredictor,
@@ -53,12 +54,17 @@ def run(
     predictor: Predictor,
     case_dirs: list[Path],
     out_root: Path,
+    session: McpSession,
 ) -> tuple[list[tuple[CaseInputs, Prediction]], list[tuple[Path, str]]]:
     """Predict every case, writing outputs under ``out_root/<job_pk>/``.
 
     A case that raises is recorded and skipped rather than aborting the sweep --
     one bad case should not cost the other 249. The evaluator scores a missing
     case as a decision error, so failures stay visible in the metrics.
+
+    ``session`` serves the whole cohort, so the sweep pays one server start
+    rather than one per case, and each case gets its own store -- and therefore
+    its own retrieval ledger.
     """
     done: list[tuple[CaseInputs, Prediction]] = []
     failed: list[tuple[Path, str]] = []
@@ -66,7 +72,7 @@ def run(
     for case_dir in case_dirs:
         try:
             case = read_case(case_dir, fallback_case_id=case_dir.name)
-            pred = predictor.predict(case)
+            pred = predictor.predict(case, session.store_for(case))
             write_case_outputs(out_root / job_pk(case.task, case.case_id), pred)
             done.append((case, pred))
         except Exception:  # noqa: BLE001 -- deliberately broad, see docstring
@@ -105,7 +111,8 @@ def main() -> int:
             "generate fixtures first: python -m chimera.cli.make_fixtures"
         )
 
-    done, failed = run(predictor, case_dirs, out_root)
+    with McpSession.for_cohort(args.cases) as session:
+        done, failed = run(predictor, case_dirs, out_root, session)
     write_predictions_dump(out_root, done)
 
     print(f"predictor : {predictor.name}")

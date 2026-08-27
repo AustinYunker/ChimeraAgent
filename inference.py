@@ -28,9 +28,10 @@ import os
 import sys
 from pathlib import Path
 
-from chimera.contract.io import read_case, socket_paths, write_case_outputs
+from chimera.contract.io import CaseInputs, read_case, socket_paths, write_case_outputs
 from chimera.contract.io import detect_task
 from chimera.contract.types import Prediction
+from chimera.mcp.client import ClinicalStore, DirectStore, McpSession
 from chimera.predictors import ConstantPredictor, GuidelinePredictor
 
 INPUT_PATH = Path(os.environ.get("CHIMERA_INPUT", "/input"))
@@ -62,8 +63,6 @@ def fallback_prediction(task: int) -> Prediction:
     and the fallback should depend on as little as possible -- in particular not
     on the parameter file or on anything read from the case.
     """
-    from chimera.contract.io import CaseInputs
-
     empty = CaseInputs(
         task=task,
         case_id="gc-case",
@@ -72,6 +71,30 @@ def fallback_prediction(task: int) -> Prediction:
         neural_representations={},
     )
     return ConstantPredictor().predict(empty)
+
+
+def open_store(case: CaseInputs) -> tuple[McpSession | None, ClinicalStore]:
+    """A store over the MCP server, or an in-process one if the transport fails.
+
+    Reading the input sockets (above) is how the data arrives; it is the server
+    that is fed from them, and the decision path reaches the masked documents
+    only through tool calls against it. The reference entrypoint is the same
+    shape -- it reads ``/input`` directly and re-materialises it for a stdio MCP
+    subprocess.
+
+    The fallback is not a second supported route. A crashed case is not skipped
+    by the evaluator, it is scored against a sentinel label and costs the true
+    class its recall, so a lost subprocess has to cost provenance rather than a
+    case. It is logged at ERROR with a traceback precisely so a container that
+    ever takes it says so in the platform logs.
+    """
+    try:
+        session = McpSession.for_input(INPUT_PATH)
+    except Exception:
+        log.exception("MCP transport failed; falling back to a direct read")
+        return None, DirectStore(case)
+    log.info("mcp server       : %s", session.server_info or "(no serverInfo)")
+    return session, session.store_for(case)
 
 
 def detect_task_safely() -> int | None:
@@ -94,13 +117,26 @@ def run() -> int:
         return 1
     log.info("task             : %d", task)
 
+    session: McpSession | None = None
     try:
         case = read_case(INPUT_PATH)
-        prediction = GuidelinePredictor().predict(case)
         log.info("case_id          : %s", case.case_id)
+        session, store = open_store(case)
+        try:
+            prediction = GuidelinePredictor().predict(case, store)
+        except Exception:
+            # The transport can also fail *after* the handshake, mid-case. A
+            # direct read still yields a full-quality prediction where the
+            # constant fallback below yields a near-worthless one, so it is
+            # worth one retry even though a genuine defect will just fail twice.
+            log.exception("prediction over MCP failed; retrying with a direct read")
+            prediction = GuidelinePredictor().predict(case, DirectStore(case))
     except Exception:
         log.exception("prediction failed; falling back to the constant predictor")
         prediction = fallback_prediction(task)
+    finally:
+        if session is not None:
+            session.close()
 
     try:
         written = write_case_outputs(OUTPUT_PATH, prediction)

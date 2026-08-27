@@ -19,6 +19,7 @@ from chimera.contract.types import (
     Reasoning,
     RecurrencePrediction,
 )
+from chimera.mcp.client import ClinicalStore
 
 # Placeholder prose. The rationale judge scores case-agnostic text LOW by
 # design, so this is a deliberate zero on that component, not an attempt at one.
@@ -61,7 +62,14 @@ class ConstantPredictor:
         self.event = event
         self.name = name
 
-    def predict(self, case: CaseInputs) -> Prediction:
+    def predict(self, case: CaseInputs, store: ClinicalStore | None = None) -> Prediction:
+        """``store`` is accepted and never used -- that is the point of this class.
+
+        It consults no evidence, so it makes no tool calls, and its declared
+        ``reveal_sequence`` is whatever it was constructed with. Optional here
+        alone, so :func:`inference.fallback_prediction` can still produce a
+        valid payload on a path where the transport itself is what failed.
+        """
         if case.task == 3:
             return RecurrencePrediction(
                 months_to_recurrence=self.months_to_recurrence,

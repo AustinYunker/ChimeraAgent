@@ -31,33 +31,48 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from chimera.contract.io import CaseInputs, read_case
+from chimera.mcp.client import ClinicalStore, McpSession
 from chimera.scoring.fast import score_cohort
 from chimera.scoring.records import load_ground_truth
 
 #: Fit a model from training rows, returning opaque parameters.
 FitFn = Callable[[Sequence["Row"]], Any]
-#: Turn one case plus fitted parameters into the flat record the scorer compares on.
-PredictFn = Callable[[CaseInputs, Any], dict[str, Any]]
+#: Turn one case, its document store and fitted parameters into the flat record
+#: the scorer compares on.
+PredictFn = Callable[[CaseInputs, ClinicalStore, Any], dict[str, Any]]
 
 
 @dataclass(slots=True)
 class Row:
-    """One labeled case: the inputs a predictor sees, and the target it is scored on."""
+    """One labeled case: the inputs a predictor sees, and the target it is scored on.
+
+    ``store`` is the case's handle on the masked documents. It is carried on the
+    row rather than created where it is needed because the fitting code reads
+    the same sections the serving code does, and the fit must be measured
+    against exactly what the container can retrieve.
+    """
 
     case: CaseInputs
     gt: dict[str, Any]
+    store: ClinicalStore
 
     @property
     def case_id(self) -> str:
         return str(self.gt.get("case_id") or self.case.case_id)
 
 
-def load_rows(cases_root: Path, gt_root: Path, task: int) -> list[Row]:
+def load_rows(cases_root: Path, gt_root: Path, task: int, session: McpSession) -> list[Row]:
     """Pair every labeled case under ``gt_root`` with its inputs under ``cases_root``.
 
     Cases without labels are dropped -- 104 of 195 for Task 1, 81 of 153 for Task 2 --
     since they cannot contribute to a supervised estimate. They remain useful for
     exercising the inference path at full cohort size.
+
+    ``session`` must already be serving ``cases_root`` (see
+    :meth:`~chimera.mcp.client.McpSession.for_cohort`). One cohort-scoped server
+    for a whole sweep is what makes it affordable to put the offline harness over
+    the same wire the container uses instead of keeping a faster direct route
+    beside it -- a second route is a second thing to keep honest.
     """
     targets = {rec["case_id"]: rec for rec in load_ground_truth(gt_root / f"task{task}", task)}
     rows: list[Row] = []
@@ -68,7 +83,8 @@ def load_rows(cases_root: Path, gt_root: Path, task: int) -> list[Row]:
         gt = targets.get(case_dir.name)
         if gt is None:
             continue
-        rows.append(Row(case=read_case(case_dir, fallback_case_id=case_dir.name), gt=gt))
+        case = read_case(case_dir, fallback_case_id=case_dir.name)
+        rows.append(Row(case=case, gt=gt, store=session.store_for(case)))
     return rows
 
 
@@ -122,7 +138,7 @@ def out_of_fold_records(
         train = [rows[i] for i in train_idx]
         params = fit(train)
         for i in test_idx:
-            record = predict(rows[i].case, params)
+            record = predict(rows[i].case, rows[i].store, params)
             record.setdefault("case_id", rows[i].case_id)
             paired.append((rows[i].gt, record))
     return paired

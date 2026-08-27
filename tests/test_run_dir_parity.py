@@ -26,6 +26,7 @@ import pytest
 from chimera.cli.run_local import discover_cases, run
 from chimera.cli.score_fast import score_task
 from chimera.contract.aggregate import write_predictions_dump
+from chimera.mcp.client import McpSession
 from chimera.predictors.constant import ConstantPredictor
 from chimera.scoring.records import predictions_from_run, record_from_prediction
 
@@ -52,11 +53,17 @@ TOL = 1e-9
 
 
 def _build_run(out_root: Path, task: int, cases_root: Path = FIXTURES) -> list:
-    """Predict every case for ``task`` under ``cases_root`` into a run dir."""
+    """Predict every case for ``task`` under ``cases_root`` into a run dir.
+
+    One cohort-scoped MCP server for the whole sweep, exactly as
+    ``run_local`` does it -- these tests are about the run directory, but they
+    should reach the documents by the same route the harness does.
+    """
     case_dirs = discover_cases(cases_root, (task,))
     if not case_dirs:
         pytest.skip(f"no cases for task{task} under {cases_root}")
-    done, failed = run(ConstantPredictor(), case_dirs, out_root)
+    with McpSession.for_cohort(cases_root) as session:
+        done, failed = run(ConstantPredictor(), case_dirs, out_root, session)
     assert not failed, f"predictor failed on {[str(d) for d, _ in failed]}"
     write_predictions_dump(out_root, done)
     return done
@@ -165,7 +172,8 @@ def test_the_reader_ignores_jobs_belonging_to_another_task(refs_available, tmp_p
     case_dirs = discover_cases(FIXTURES, (1, 2, 3))
     if not case_dirs:
         pytest.skip(f"no fixtures under {FIXTURES}")
-    done, failed = run(ConstantPredictor(), case_dirs, run_dir)
+    with McpSession.for_cohort(FIXTURES) as session:
+        done, failed = run(ConstantPredictor(), case_dirs, run_dir, session)
     assert not failed
     write_predictions_dump(run_dir, done)
 

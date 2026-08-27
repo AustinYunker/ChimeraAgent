@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, fields
 from typing import Any
 
-from chimera.contract.io import CaseInputs
+from chimera.mcp.client import ClinicalStore
 
 #: Nodal status when the pelvic nodes were never sampled (pNx).
 NOT_ASSESSED = "not_assessed"
@@ -42,9 +42,9 @@ NOT_ASSESSED = "not_assessed"
 _NUM = r"(\d+(?:\.\d+)?)"
 
 
-def _text(clinical: dict[str, Any], section: str) -> str:
+def _text(store: ClinicalStore, section: str) -> str:
     """A section's text, or ``""`` -- sections are sometimes ``None`` or a list."""
-    value = clinical.get(section)
+    value = store.section(section)
     if isinstance(value, str):
         return value
     if isinstance(value, list):
@@ -112,14 +112,17 @@ class SurgicalPathology:
         return out
 
 
-def extract_reports(case: CaseInputs) -> SurgicalPathology:
-    """Parse whatever the case's reports state. Never raises."""
-    clinical = case.clinical_data if isinstance(case.clinical_data, dict) else {}
+def extract_reports(store: ClinicalStore) -> SurgicalPathology:
+    """Parse whatever the case's reports state. Never raises.
 
-    surgical = _text(clinical, "surgical_pathology_report")
-    pathology = _text(clinical, "pathology_report")
-    radiology = _text(clinical, "radiology_report")
-    notes = _text(clinical, "previous_notes")
+    Takes a store rather than the case: every one of these four documents is a
+    masked section, so reaching it is a tool call, and the calls this makes are
+    recorded in the store's ledger for the caller to declare.
+    """
+    surgical = _text(store, "surgical_pathology_report")
+    pathology = _text(store, "pathology_report")
+    radiology = _text(store, "radiology_report")
+    notes = _text(store, "previous_notes")
 
     # Grade comes from the prostatectomy specimen when available; the biopsy report
     # is the fallback, since post-surgical grade is the one CAPRA-S wants.

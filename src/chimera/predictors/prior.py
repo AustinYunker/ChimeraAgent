@@ -18,7 +18,9 @@ Two properties are load-bearing:
   to be exactly the evidence we actually retrieved. The fitted policy is only a
   *request*; :meth:`PriorPredictor.predict` intersects it with the sections this
   case genuinely carries, reads those, and declares exactly what it read. A
-  section the case does not have is never claimed.
+  section the case does not have is never claimed. Since C4a "reads those"
+  means a tool call through a :class:`~chimera.mcp.client.ClinicalStore`, so
+  the declaration is backed by the store's ledger rather than by convention.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from chimera.contract.types import (
 )
 from chimera.evidence.reports import extract_reports
 from chimera.evidence.structured import StructuredFeatures, extract_structured
+from chimera.mcp.client import ClinicalStore
 from chimera.models.guidelines import eau_risk
 # Submodule form, not ``from chimera.predictors import rationale``: the package
 # __init__ imports this module, so the package object is only half-built while
@@ -80,19 +83,6 @@ def _normalise_weights(task: int, raw: Any) -> dict[str, str]:
     return weights
 
 
-def section_is_present(value: Any) -> bool:
-    """Whether a clinical-data section carries usable content.
-
-    Sections are heterogeneous -- ``radiology_report`` is a string,
-    ``psa_trend`` a list of records -- so this tests emptiness rather than type.
-    """
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return value is not None
-
-
 class PriorPredictor:
     """Emits the fitted per-task constants, grounded in what the case carries."""
 
@@ -103,20 +93,30 @@ class PriorPredictor:
 
     # -- reveal handling ---------------------------------------------------- #
 
-    def retrieve(self, case: CaseInputs, policy: list[str]) -> dict[str, Any]:
-        """Actually read the policy's sections from this case's clinical data.
+    def retrieve(self, store: ClinicalStore, policy: list[str]) -> dict[str, Any]:
+        """Call the policy's tools, and return what they actually gave us.
 
         Returns only what was found, in policy order. The declared
         ``reveal_sequence`` is precisely ``list(...)`` of this mapping, so the
         declaration cannot drift from the retrieval.
+
+        Two filters apply and they are not the same filter. ``REVEAL_SECTIONS``
+        bounds what may be *declared*; the store's per-task registry bounds what
+        can be *retrieved*. A section outside the vocabulary is skipped here
+        because declaring it would register as an extra reveal, which is why
+        Task 3's surgical pathology is fetched by the recurrence path directly
+        rather than through a policy.
+
+        Order is deliberately the policy's, not the ledger's. The ledger records
+        call order, which extraction perturbs; the fitted policy is a stable
+        ordering that the tool score was measured against.
         """
-        clinical = case.clinical_data if isinstance(case.clinical_data, dict) else {}
         retrieved: dict[str, Any] = {}
         for section in policy:
             if section not in spec.REVEAL_SECTIONS:
                 continue
-            value = clinical.get(section)
-            if section_is_present(value):
+            value = store.section(section)
+            if value is not None:
                 retrieved[section] = value
         return retrieved
 
@@ -142,12 +142,12 @@ class PriorPredictor:
 
     # -- Predictor protocol -------------------------------------------------- #
 
-    def predict(self, case: CaseInputs) -> Prediction:
+    def predict(self, case: CaseInputs, store: ClinicalStore) -> Prediction:
         if case.task == 3:
-            return self._predict_recurrence(case)
-        return self._predict_decision(case)
+            return self._predict_recurrence(case, store)
+        return self._predict_decision(case, store)
 
-    def _predict_recurrence(self, case: CaseInputs) -> RecurrencePrediction:
+    def _predict_recurrence(self, case: CaseInputs, store: ClinicalStore) -> RecurrencePrediction:
         params = self.params.get("task3") or {}
         months = params.get("months_to_recurrence")
         try:
@@ -165,14 +165,14 @@ class PriorPredictor:
         # score is what orders its cases; this predictor's ordering is a
         # constant, and saying otherwise would be the one thing the rubric
         # actually punishes -- a rationale that does not match the prediction.
-        pathology = extract_reports(case)
-        psa = extract_structured(case).psa
+        pathology = extract_reports(store)
+        psa = extract_structured(case, store).psa
         text = recurrence_rationale(pathology, psa, months, None)
         return RecurrencePrediction(
             months_to_recurrence=months, event=event, free_text=text
         )
 
-    def _predict_decision(self, case: CaseInputs) -> DecisionPrediction:
+    def _predict_decision(self, case: CaseInputs, store: ClinicalStore) -> DecisionPrediction:
         params = self.params.get(f"task{case.task}") or {}
 
         allowed = spec.BIOPSY_DECISIONS if case.task == 1 else spec.TREATMENT_DECISIONS
@@ -186,7 +186,7 @@ class PriorPredictor:
 
         weights = _normalise_weights(case.task, params.get("variable_weights"))
 
-        features = extract_structured(case)
+        features = extract_structured(case, store)
 
         policy = params.get("reveal_sequence")
         policy = list(policy) if isinstance(policy, list) else []
@@ -197,7 +197,7 @@ class PriorPredictor:
         for section in features.evidence_sections:
             if section not in policy:
                 policy.append(section)
-        retrieved = self.retrieve(case, policy)
+        retrieved = self.retrieve(store, policy)
 
         return DecisionPrediction(
             task=case.task,

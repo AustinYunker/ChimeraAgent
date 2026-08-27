@@ -73,7 +73,7 @@ def detect_task(slugs: dict[str, Path] | set[str]) -> int:
     )
 
 
-def _read_dict(path: Path | None) -> dict[str, Any]:
+def read_dict(path: Path | None) -> dict[str, Any]:
     """Load a JSON object socket, tolerating absence and malformation.
 
     A socket declared in ``inputs.json`` whose file is missing or unreadable
@@ -97,9 +97,9 @@ def read_case(input_dir: Path, *, fallback_case_id: str = "gc-case") -> CaseInpu
     paths = socket_paths(input_dir)
     task = detect_task(paths)
 
-    prompt = _read_dict(paths.get(spec.STRUCTURED_PROMPT_SLUG))
-    clinical = _read_dict(paths.get(spec.CLINICAL_SLUG_BY_TASK[task]))
-    neural = _read_dict(paths.get(spec.NEURAL_REP_SLUG))
+    prompt = read_dict(paths.get(spec.STRUCTURED_PROMPT_SLUG))
+    clinical = read_dict(paths.get(spec.CLINICAL_SLUG_BY_TASK[task]))
+    neural = read_dict(paths.get(spec.NEURAL_REP_SLUG))
 
     # The platform anonymises cases, so case_id is often absent on the wire. The
     # evaluator reads it from the structured prompt to find ground truth, so

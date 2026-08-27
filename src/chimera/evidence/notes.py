@@ -54,6 +54,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from chimera.mcp.client import ClinicalStore
+
 #: Clinical-data sections this module reads, in reveal-vocabulary order. Both are
 #: in :data:`chimera.contract.spec.REVEAL_SECTIONS`, so both can be declared.
 NOTE_SECTIONS: tuple[str, ...] = ("radiology_report", "previous_notes")
@@ -158,21 +160,22 @@ def _section_text(value: Any) -> str:
     return ""
 
 
-def prior_biopsy_from_notes(clinical: Any) -> tuple[str | None, tuple[str, ...]]:
+def prior_biopsy_from_notes(store: ClinicalStore) -> tuple[str | None, tuple[str, ...]]:
     """Read :data:`NOTE_SECTIONS` and classify. Returns ``(status, sections_read)``.
 
     ``sections_read`` names the sections that actually carried text, which is
     what may be declared in ``reveal_sequence``. It is returned even when the
     classification abstains: we read them either way, and the reveal has to
     describe what was retrieved rather than what was useful.
-    """
-    if not isinstance(clinical, dict):
-        return None, ()
 
+    Both sections are fetched through the store, so each is a tool call and the
+    caller's declaration is backed by the store's ledger rather than by this
+    return value alone.
+    """
     read: list[str] = []
     parts: list[str] = []
     for section in NOTE_SECTIONS:
-        text = _section_text(clinical.get(section))
+        text = _section_text(store.section(section))
         if text.strip():
             read.append(section)
             parts.append(text)

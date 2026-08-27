@@ -21,6 +21,7 @@ from typing import Any, Sequence
 from chimera.cli.fit_prior import available_sections
 from chimera.contract import spec
 from chimera.eval.cv import cross_validate, load_rows, summarise
+from chimera.mcp.client import McpSession
 from chimera.models import stratified
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -50,7 +51,7 @@ def _constant_fit(task: int, sections: Sequence[str]):
                 best, best_score = decision, score
         return {"task": task, "constant": best, "reasoning": reasoning}
 
-    def predict(case, params):
+    def predict(case, store, params):
         decision = params["constant"]
         return stratified.decision_record(
             params["task"], case.case_id, decision,
@@ -67,6 +68,35 @@ def _guideline_fit(task: int, sections: Sequence[str]):
     return fit, stratified.predict_record
 
 
+def _evaluate(args, task: int, rows: Sequence[Any]) -> dict[str, Any]:
+    """Every arm for one task, keyed by the name it is reported under."""
+    results: dict[str, Any] = {}
+
+    if task == 3:
+        # Nothing is fitted, so folds are irrelevant: one pass over the cohort
+        # is the estimate. Reported through the same path for consistency.
+        results["capra_s"] = cross_validate(
+            3, rows, lambda train: None, stratified.predict_recurrence_record,
+            folds=args.folds, repeats=1,
+        )
+        results["constant"] = cross_validate(
+            3, rows, lambda train: None,
+            lambda case, store, p: {"case_id": case.case_id,
+                                    "months_to_recurrence": 60.0, "event": 0},
+            folds=args.folds, repeats=1,
+        )
+        return results
+
+    sections = available_sections(args.data, task)
+    for name, builder in (("constant (C1b prior)", _constant_fit),
+                          ("guideline strata (C2)", _guideline_fit)):
+        fit, predict = builder(task, sections)
+        results[name] = cross_validate(
+            task, rows, fit, predict, folds=args.folds, repeats=args.repeats
+        )
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
@@ -80,44 +110,25 @@ def main() -> int:
 
     report: dict[str, Any] = {}
 
-    for task in args.tasks:
-        rows = load_rows(args.cases, args.gt, task)
-        if not rows:
-            print(f"task{task}: no labeled rows under {args.gt}")
-            continue
+    # One cohort-scoped MCP server for the whole sweep. Every clinical document
+    # the fit or the scoring touches is fetched through it.
+    with McpSession.for_cohort(args.cases) as session:
+        for task in args.tasks:
+            rows = load_rows(args.cases, args.gt, task, session)
+            if not rows:
+                print(f"task{task}: no labeled rows under {args.gt}")
+                continue
 
-        print(f"===== task{task} (n={len(rows)}) =====")
-        results: dict[str, Any] = {}
+            print(f"===== task{task} (n={len(rows)}) =====")
+            results = _evaluate(args, task, rows)
 
-        if task == 3:
-            # Nothing is fitted, so folds are irrelevant: one pass over the cohort
-            # is the estimate. Reported through the same path for consistency.
-            results["capra_s"] = cross_validate(
-                3, rows, lambda train: None, stratified.predict_recurrence_record,
-                folds=args.folds, repeats=1,
-            )
-            results["constant"] = cross_validate(
-                3, rows, lambda train: None,
-                lambda case, p: {"case_id": case.case_id,
-                                 "months_to_recurrence": 60.0, "event": 0},
-                folds=args.folds, repeats=1,
-            )
-        else:
-            sections = available_sections(args.data, task)
-            for name, builder in (("constant (C1b prior)", _constant_fit),
-                                  ("guideline strata (C2)", _guideline_fit)):
-                fit, predict = builder(task, sections)
-                results[name] = cross_validate(
-                    task, rows, fit, predict, folds=args.folds, repeats=args.repeats
-                )
-
-        for name, result in results.items():
-            print(summarise(name, result))
-        print()
-        report[f"task{task}"] = {
-            k: {kk: vv for kk, vv in v.items() if kk != "last_aggregate"}
-            for k, v in results.items()
-        }
+            for name, result in results.items():
+                print(summarise(name, result))
+            print()
+            report[f"task{task}"] = {
+                k: {kk: vv for kk, vv in v.items() if kk != "last_aggregate"}
+                for k, v in results.items()
+            }
 
     if args.as_json:
         print(json.dumps(report, indent=2, sort_keys=True))
