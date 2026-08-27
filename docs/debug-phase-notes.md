@@ -351,3 +351,119 @@ Two smaller corrections fell out of the same work:
   that does not match the prediction.
 
 191 tests pass (173 before).
+
+## Second debug submission (v0.3.0, Aug 26) — `metrics_august_26.json`
+
+Overall ranking **0.8193 → 0.8263**. Decisions and Task 3 predictions are byte-identical
+to the first submission, and weight vector B reproduces all seven gate-passed decision
+case scores exactly, so the evaluator did not move again and `free_text` is the only
+variable. The twelve cases are paired.
+
+| case | task | v0.2.1 | v0.3.0 | Δ | local |
+|---|---|---|---|---|---|
+| `PT-pseudo_0020cfca66c8` | biopsy | 0.8 | **1.0** | +0.2 | 1.0 |
+| `PT-pseudo_0cdfb9410718` | biopsy | 0.6 | 0.4 | −0.2 | 0.2 |
+| `PT-pseudo_1dc32184cab6` | biopsy | gate | gate | — | — |
+| `PT-pseudo_2e0346bce3b3` | biopsy | 0.4 | 0.3 | −0.1 | 0.2 |
+| `T2-001` | treatment | 0.9 | 0.9 | +0.0 | 1.0 |
+| `T2-017` | treatment | 0.6 | **0.9** | +0.3 | 1.0 |
+| `T2-021` | treatment | 0.7 | **1.0** | +0.3 | 0.7 |
+| `T2-044` | treatment | 0.8 | **1.0** | +0.2 | 0.7 |
+| `T3-001` | recurrence | 0.1 | 0.2 | +0.1 | 0.2 |
+| `T3-002` | recurrence | 0.2 | **0.7** | +0.5 | 0.2 |
+| `T3-006` | recurrence | 0.2 | 0.2 | +0.0 | 0.3 |
+| `T3-009` | recurrence | 0.2 | **0.7** | +0.5 | 0.2 |
+
+Paired gain +0.164 (sd 0.229, n=11): treatment **+0.200**, recurrence **+0.275**,
+biopsy **−0.033**. Twelve cases is not a measurement — but the *direction* per task is
+the thing the offline instrument could not settle, and it splits cleanly.
+
+**Task 2 did not compress.** The rewrite gained on the platform (0.75 → 0.95) by more
+than it gained locally, and the platform scored it *above* our local judge (0.95 vs
+0.8621). The compression hypothesis recorded in `docs/judge-setup.md` is not supported
+here; the conservative-proxy reading is. Task 2 mean rationale is now 0.95 with 4/4
+decisions, so that task is close to done.
+
+### The Task 1 "hallucination" is the judge quoting the reference back at us
+
+Both Task 1 losses carry the same complaint, e.g.
+
+> while the Actual Output mentions `'ISUP grade group 1 (Gleason 3+3)'`, this specific
+> grading is not present in the provided clinical data, constituting a hallucination of
+> unavailable clinical facts
+
+**We never wrote it.** Our free_text for those two cases is, in full:
+
+> MRI PI-RADS 4, a lesion likely to be clinically significant and PSA 5.2 ng/mL
+> (density 0.151). Prostate biopsy is indicated.
+
+The string "ISUP" appears nowhere in our Task 1 output, and it cannot: no Task 1 card in
+the release carries `bx_isup`, `bx_gl_prim` or `bx_gl_sec` at all — 0 of 195, against
+153 of 153 on Task 2 — so `_grade_clause` returns empty on every Task 1 case. (This also
+fills the two `-` cells in the `CITABLE` table above: the fields are absent from Task 1
+rather than merely uncorroborated, which is why they were never measured. `docs/plan.md`
+claiming Task 1 `bx_isup` at 74% is wrong and should be struck.)
+
+Where it comes from is the *reference* rationale:
+
+- `0cdfb9410718` — "Again missing earlier ISUP grading and if the PIRADS 4 lesion is
+  stabile or growing"
+- `2e0346bce3b3` — "Need to know initial ISUP and MRI results"
+
+The judge read "ISUP" out of the Expected Output and attributed it to the Actual Output.
+That is a judge attribution defect, not a defect of ours, and there is nothing to fix in
+`CITABLE`. Worth reporting to the organizers alongside the Task 3 reference-leak defect.
+
+### What the Task 1 references actually are
+
+Measured over all 91 released Task 1 cases against 72 Task 2 cases:
+
+| | task 1 | task 2 |
+|---|---|---|
+| reference free_text asks for *missing information* | **34%** (31/91) | 7% (5/72) |
+| reference confidence `uncertain` | 15 | **0** |
+| reference confidence `borderline` | 18 | 14 |
+
+Task 1's references are a different genre. A third of them are the clinician declining to
+commit — "I need information on initial ISUP and size of P4 lesion" — rather than a
+characterisation of the patient. The rewrite tuned toward clinical characterisation, which
+is exactly right for Task 2 (0.95) and is the wrong register for a third of Task 1. That,
+not a citation error, is why Task 1 did not move.
+
+### Item 6 (per-case confidence) is closed — measured, not deferred
+
+`confidence_score` is **ordinal distance**, `1 − |Δ| / 2` over uncertain(0) /
+borderline(1) / clear(2) — not exact match, which is what item 4 implicitly assumed.
+Under that metric, on Task 1:
+
+| constant | expected `confidence_score` |
+|---|---|
+| always `uncertain` | 0.264 |
+| always `borderline` | 0.599 |
+| always **`clear`** | **0.736** |
+
+Stratifying by `enc_type` — the strongest split found, 92% clear on `Follow-up - PSA + MRI`
+against 51% on `Re-evaluation - prior PCa diagnosis` — an **oracle** that picks the best
+constant per stratum scores **0.736**, identical to always-`clear` to three decimals. No
+stratum flips, because no stratum has a non-`clear` majority. Same result on Task 2
+(0.903 either way). Our constant is already optimal; a per-case confidence model cannot
+pay for itself on the deterministic component.
+
+That leaves only the indirect route — the judge reads the hedge in the prose, and rubric
+step 5 grades it. But buying rationale points by hedging would sell `confidence_score`
+points at a known exchange rate to buy LLM points through a proxy we have measured at
+−0.118. Item 4's "understated the value of predicting confidence per case" is retracted:
+priced correctly, the deterministic side is worth nothing, and the top entry's
+`confidence_weighted_kappa` of 0.857 is a cohort-level statistic that a constant cannot
+score on regardless of how well the constant does per case.
+
+### Task 3, for the record
+
+Mean rationale 0.175 → 0.45, and C-index 1.0 on four cases. Neither matters: Task 3's
+ranking score is the C-index alone. The judge still docks CAPRA-S itself as unsupported
+("introduces a calculated CAPRA-S score (2 of 12) ... not supported by the provided Input
+data") and still compares our predicted months against `reference_months_to_recurrence`
+as though it were an input. On `T3-006` it calls the deliberate pNx clause "no lymph nodes
+sampled" *"redundant and potentially misleading"* — that clause is locked by
+`test_unsampled_nodes_are_not_reported_as_negative` and stays, because reporting unsampled
+nodes as negative is the actual error it prevents.

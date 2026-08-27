@@ -151,7 +151,7 @@ Task 1/2 classifiers and the Task 3 survival model, under nested CV.
 
 > **Pass:** CV `ranking_score` beats both a majority-class baseline and the reference agent baseline on all three tasks.
 
-### C3 — Reasoning heads + selector ❌ *cancelled Aug 24* — ⚠️ **cancellation void, re-open**
+### C3 — Reasoning heads + selector ❌ *cancelled Aug 24* — ⚠️ **cancellation void** — ✅ *re-run Aug 27: +0.0089 overall*
 
 > ⚠️ **The measurements below were taken with the wrong weights and do not support the
 > conclusion drawn from them.** Upstream `192c39c` (Aug 24) repriced section grounding
@@ -159,8 +159,44 @@ Task 1/2 classifiers and the Task 3 survival model, under nested CV.
 > sweep behind this table priced grounding at **0.175** — 3.5× the live value — and the
 > Task 2 head it blessed was tuned to hold exactly that component at 1.000. Every number
 > in this section is stale, including the "under +0.005 overall" that justified the
-> cancellation. See `docs/debug-phase-notes.md`. The scorer has since been corrected;
-> the sweep has not been re-run.
+> cancellation. See `docs/debug-phase-notes.md`.
+
+#### Re-run, Aug 27
+
+`guideline_params.json` was last fitted Aug 22 (`e26c2be`); the scorer was repriced
+Aug 26 (`291a249`), whose own message says it voids what the old prices bought. The
+shipped constants were an argmax against prices that no longer exist. Re-running
+`fit_models` unchanged recovers:
+
+| | old (Aug 22 prices) | refit | Δ ranking |
+|---|---|---|---|
+| Task 1 | 0.6342 | 0.6384 | **+0.0042** |
+| Task 2 | 0.6423 | 0.6603 | **+0.0180** |
+| overall (2:2:1) | 0.6581 | 0.6669 | **+0.0089** |
+
+Ranking scores at live judge-on prices, from the official evaluator's own per-case
+components recombined by `chimera.scoring.reprice`; the omitted `0.20 × rationale`
+term is provably identical across the two runs, because the judge is never shown
+`variable_weights` or `reveal_sequence` and every other field it sees is unchanged.
+Confirmed out of fold: the refit procedure's honest repeated-CV scores are 0.6308 and
+0.6561, and correcting the frozen old params for the same in-sample optimism
+(+0.0076, +0.0042) reproduces both deltas exactly.
+
+**The correction this section needs.** The claim below that Task 2's
+`variable_weight_weighted_kappa` of 0.139 "is not a defect; it is the correct price
+for `tool = 1.000` and `grounding = 1.000`" was true only at 0.175 grounding. At the
+live 0.05 the trade reverses: the refit takes kappa 0.139 → 0.479 and spends grounding
+1.000 → 0.219 to do it, and that is worth +0.018. What survives unchanged is the
+*reveal* half — Task 2's reference `reveal_sequence` is empty in all 72 cases, so
+declaring nothing is a genuine optimum under either pricing, and the refit still
+declares nothing in every stratum. It was the weights that were stale, not the reveals.
+
+**Method, for anything measured from here.** `scripts/score.sh` cannot run the judge
+on this host, so `evaluate.py` takes its `rs is None` branch and prices grounding at
+0.175. Those are not leaderboard numbers, and this refit demonstrates the failure
+mode concretely: it *loses* 0.0102 overall under `score.sh` and *gains* 0.0089 live.
+`score.sh` now prints both columns, and `chimera.scoring.reprice` carries the
+reasoning; never read the judge-off column as a result.
 
 > **Original pass condition:** measurable CV lift in `mean_case_score_among_gate_passed`
 > from per-case confidence and variable-weight predictors plus a 64-subset reveal

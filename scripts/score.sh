@@ -98,3 +98,12 @@ SECTION_MAPPING_FILE="${GT_ROOT}/section_variable_mapping.json" \
 EVAL_OUTPUT_DIR="${OUT}" \
 USE_RATIONALE_JUDGE="${USE_RATIONALE_JUDGE:-0}" \
   python "${EVAL_PY}"
+
+# With the judge off, evaluate.py takes its `rs is None` branch, which prices
+# section grounding at 0.175 against the live 0.05 -- a factor of 3.5 on exactly the
+# term that penalises weighting an unrevealed variable. The numbers printed above are
+# therefore not leaderboard numbers, and a policy change can lose here and win there.
+# So always print both. Components stay the evaluator's; only the sum is recomputed.
+if [[ "${USE_RATIONALE_JUDGE:-0}" == "0" ]]; then
+  python -m chimera.scoring.reprice "${RUN_DIR}"
+fi

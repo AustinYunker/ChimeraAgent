@@ -8,10 +8,10 @@
       "previous_notes",
       "family_history"
     ],
-    "cv_baseline_constant": 0.6352475996225997,
+    "cv_baseline_constant": 0.5822638670852956,
     "cv_beats_baseline_beyond_noise": true,
-    "cv_score": 0.6900123071373072,
-    "cv_sd": 0.0001740408647355631,
+    "cv_score": 0.6308361281575567,
+    "cv_sd": 0.0001537396854351747,
     "leaf_labels": {
       "naive_pirads_high": "yes",
       "naive_pirads_low": "no",
@@ -28,8 +28,8 @@
           "age": "important",
           "bx": "important",
           "comorbidity": "noted",
-          "cspca": "noted",
-          "dre": "not_used",
+          "cspca": "not_used",
+          "dre": "noted",
           "fh": "not_used",
           "pirads": "important",
           "psa": "important",
@@ -40,10 +40,7 @@
       "no": {
         "confidence": "clear",
         "reveal_sequence": [
-          "radiology_report",
-          "laboratory_results",
-          "psa_trend",
-          "previous_notes"
+          "radiology_report"
         ],
         "variable_weights": {
           "age": "important",
@@ -65,11 +62,11 @@
         ],
         "variable_weights": {
           "age": "important",
-          "bx": "not_used",
+          "bx": "important",
           "comorbidity": "noted",
-          "cspca": "not_used",
-          "dre": "not_used",
-          "fh": "not_used",
+          "cspca": "noted",
+          "dre": "noted",
+          "fh": "noted",
           "pirads": "decisive",
           "psa": "important",
           "psad": "noted",
@@ -87,10 +84,10 @@
       "previous_notes",
       "family_history"
     ],
-    "cv_baseline_constant": 0.27328243404649993,
+    "cv_baseline_constant": 0.24862558424121262,
     "cv_beats_baseline_beyond_noise": true,
-    "cv_score": 0.7082660171712148,
-    "cv_sd": 0.001531874175847382,
+    "cv_score": 0.6560559880028523,
+    "cv_sd": 0.0007768934951622491,
     "leaf_labels": {
       "positive_high": "active_treatment",
       "positive_intermediate": "active_treatment",
@@ -105,16 +102,16 @@
         "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
-          "bx_gl_prim": "not_used",
-          "bx_gl_sec": "not_used",
-          "bx_isup": "not_used",
+          "bx_gl_prim": "noted",
+          "bx_gl_sec": "noted",
+          "bx_isup": "important",
           "comorbidity": "noted",
-          "cspca": "not_used",
-          "ct": "not_used",
-          "fh": "not_used",
-          "pirads": "not_used",
+          "cspca": "noted",
+          "ct": "important",
+          "fh": "noted",
+          "pirads": "important",
           "psa": "important",
-          "psad": "not_used"
+          "psad": "noted"
         }
       },
       "active_surveillance": {
@@ -122,16 +119,16 @@
         "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
-          "bx_gl_prim": "not_used",
-          "bx_gl_sec": "not_used",
-          "bx_isup": "not_used",
-          "comorbidity": "important",
-          "cspca": "not_used",
-          "ct": "not_used",
-          "fh": "not_used",
-          "pirads": "not_used",
+          "bx_gl_prim": "noted",
+          "bx_gl_sec": "noted",
+          "bx_isup": "decisive",
+          "comorbidity": "noted",
+          "cspca": "noted",
+          "ct": "noted",
+          "fh": "noted",
+          "pirads": "important",
           "psa": "important",
-          "psad": "not_used"
+          "psad": "noted"
         }
       },
       "active_treatment": {
@@ -139,16 +136,16 @@
         "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
-          "bx_gl_prim": "not_used",
-          "bx_gl_sec": "not_used",
-          "bx_isup": "not_used",
+          "bx_gl_prim": "noted",
+          "bx_gl_sec": "important",
+          "bx_isup": "important",
           "comorbidity": "noted",
-          "cspca": "not_used",
-          "ct": "not_used",
-          "fh": "not_used",
-          "pirads": "not_used",
+          "cspca": "noted",
+          "ct": "noted",
+          "fh": "noted",
+          "pirads": "important",
           "psa": "important",
-          "psad": "not_used"
+          "psad": "noted"
         }
       },
       "continued_surveillance": {
@@ -160,12 +157,12 @@
           "bx_gl_sec": "not_used",
           "bx_isup": "not_used",
           "comorbidity": "noted",
-          "cspca": "not_used",
-          "ct": "not_used",
-          "fh": "not_used",
-          "pirads": "not_used",
+          "cspca": "noted",
+          "ct": "important",
+          "fh": "noted",
+          "pirads": "important",
           "psa": "important",
-          "psad": "not_used"
+          "psad": "noted"
         }
       }
     }
