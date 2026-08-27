@@ -379,7 +379,7 @@ def test_a_server_that_cannot_start_raises_rather_than_hanging(tmp_path):
     child alive.
     """
     with pytest.raises(Exception):
-        McpSession.for_cohort(tmp_path / "nothing-here", timeout=15.0)
+        McpSession.for_cohort(tmp_path / "nothing-here", timeout=15.0, startup_timeout=15.0)
 
 
 def test_a_failed_handshake_leaves_no_child_process(tmp_path):
@@ -388,10 +388,54 @@ def test_a_failed_handshake_leaves_no_child_process(tmp_path):
     script.write_text("import sys; sys.exit(3)\n")
     session = None
     try:
-        session = McpSession([sys.executable, str(script)], timeout=15.0)
+        session = McpSession([sys.executable, str(script)], timeout=15.0, startup_timeout=15.0)
     except Exception:
         pass
     else:  # pragma: no cover - a server that answered nothing must not succeed
         session.close()
         pytest.fail("a server that exits immediately produced a usable session")
     assert session is None
+
+
+def test_startup_gets_a_longer_budget_than_a_tool_call(tmp_path):
+    """A slow *start* is normal; a slow *call* is a hang. They need separate budgets.
+
+    The server builds its case index before it can answer anything, and in cohort
+    mode that is a recursive scan plus one JSON read per case. Charging it to the
+    per-call budget killed a 40-minute fit on a busy host -- the scan was fine, the
+    deadline was not. So the handshake waits longer, and the per-call timeout stays
+    tight so a genuine hang is still caught quickly.
+
+    Driven by a stub server that sleeps past the per-call timeout before answering
+    ``initialize`` and is instant thereafter, which is exactly the real shape.
+    """
+    script = tmp_path / "slow_start.py"
+    script.write_text(
+        "import json, sys, time\n"
+        "time.sleep(2.0)\n"  # longer than the per-call budget below
+        "for line in sys.stdin:\n"
+        "    line = line.strip()\n"
+        "    if not line:\n"
+        "        continue\n"
+        "    msg = json.loads(line)\n"
+        "    if 'id' not in msg:\n"
+        "        continue\n"
+        "    sys.stdout.write(json.dumps(\n"
+        "        {'jsonrpc': '2.0', 'id': msg['id'],\n"
+        "         'result': {'serverInfo': {'name': 'slow'}}}) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+    )
+    command = [sys.executable, str(script)]
+
+    # One budget for both: the slow start is misread as a hang.
+    with pytest.raises(Exception):
+        McpSession(command, timeout=0.5, startup_timeout=0.5).close()
+
+    # Separate budgets: the same server starts cleanly, and the per-call deadline
+    # is still the tight one.
+    session = McpSession(command, timeout=0.5, startup_timeout=30.0)
+    try:
+        assert session.server_info.get("name") == "slow"
+        assert session.timeout == 0.5
+    finally:
+        session.close()

@@ -40,6 +40,15 @@ from chimera.mcp.tools import section_is_present, tool_for_section
 #: and a dict lookup, so anything approaching this is a hang, not slow work.
 DEFAULT_TIMEOUT = 30.0
 
+#: Seconds to wait for the *handshake*, which is a different kind of wait and needs
+#: its own budget. The server builds its case index before it can answer anything,
+#: and in cohort mode that is a recursive scan plus one JSON read per case -- O(423)
+#: for the training cohort, against O(1) for every later request. Charging that
+#: one-time cost to the per-call budget is what made a 40-minute fit die on a
+#: ``TransportError`` when the host was busy: the scan was fine, the deadline was
+#: not. Keep the per-call timeout tight so a genuine hang is still caught quickly.
+DEFAULT_STARTUP_TIMEOUT = 300.0
+
 CLIENT_NAME = "chimera-agent"
 CLIENT_VERSION = "1.0.0"
 
@@ -94,9 +103,16 @@ class McpSession:
     the session is per case because the container is.
     """
 
-    def __init__(self, command: list[str], *, timeout: float = DEFAULT_TIMEOUT) -> None:
+    def __init__(
+        self,
+        command: list[str],
+        *,
+        timeout: float = DEFAULT_TIMEOUT,
+        startup_timeout: float = DEFAULT_STARTUP_TIMEOUT,
+    ) -> None:
         self.command = command
         self.timeout = timeout
+        self.startup_timeout = max(startup_timeout, timeout)
         self._next_id = 0
         # bufsize=0: the reader works on the raw descriptor so it can enforce a
         # timeout, and a buffered writer would leave frames sitting unflushed.
@@ -174,19 +190,27 @@ class McpSession:
                 "capabilities": {},
                 "clientInfo": {"name": CLIENT_NAME, "version": CLIENT_VERSION},
             },
+            timeout=self.startup_timeout,
         )
         self.server_info = result.get("serverInfo") or {}
         # Required by the spec and expected by conforming servers, even though
         # ours does not gate on it.
         protocol.write_message(self._out_fd, protocol.notification("notifications/initialized"))
 
-    def _request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _request(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         self._next_id += 1
         msg_id = self._next_id
         protocol.write_message(self._out_fd, protocol.request(msg_id, method, params))
 
+        deadline = self.timeout if timeout is None else timeout
         while True:
-            message = self._reader.read_message(timeout=self.timeout)
+            message = self._reader.read_message(timeout=deadline)
             if message is None:
                 raise protocol.TransportError(f"server closed the stream during {method}")
             if message.get("id") != msg_id:
@@ -276,11 +300,21 @@ class McpStore:
         return dict(self._retrieved)
 
 
-def spawn_store(input_dir: Path, case: CaseInputs, *, timeout: float = DEFAULT_TIMEOUT) -> tuple[McpSession, McpStore]:
+def spawn_store(
+    input_dir: Path,
+    case: CaseInputs,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
+    startup_timeout: float = DEFAULT_STARTUP_TIMEOUT,
+) -> tuple[McpSession, McpStore]:
     """A session and store for the single case mounted at ``input_dir``.
 
     Returned as a pair so the caller owns the session's lifetime; the container
     closes it after writing its outputs.
+
+    The generous ``startup_timeout`` costs nothing here -- ``/input`` holds one case,
+    so the server's index is a single manifest -- but it keeps the container on the
+    same code path as the offline harness rather than a second set of deadlines.
     """
-    session = McpSession.for_input(input_dir, timeout=timeout)
+    session = McpSession.for_input(input_dir, timeout=timeout, startup_timeout=startup_timeout)
     return session, session.store_for(case)
