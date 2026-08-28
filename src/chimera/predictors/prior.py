@@ -12,8 +12,10 @@ Two properties are load-bearing:
 
 * **Pure standard library.** This module and everything it imports must stay
   free of numpy, scikit-learn and pydantic, because it is the only predictor
-  that ships inside the submission container and that is what keeps the image
-  at ~150 MB. ``tests/test_entrypoint.py`` asserts this.
+  that ships inside the submission container, and that is what keeps the image
+  small enough to build and push in about a minute.
+  ``tests/test_entrypoint.py`` asserts the stdlib closure; the size itself is
+  measured by the ``build-image`` workflow and recorded in ``README.md``.
 * **Reveal honesty.** ``docs/plan.md`` requires the declared ``reveal_sequence``
   to be exactly the evidence we actually retrieved. The fitted policy is only a
   *request*; :meth:`PriorPredictor.predict` intersects it with the sections this

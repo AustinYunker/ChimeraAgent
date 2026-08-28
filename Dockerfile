@@ -4,9 +4,14 @@
 # `ConstantPredictor` as the fallback when a case defeats the normal route. Its
 # entire runtime import closure is the Python standard library -- no numpy, no
 # scikit-learn, no pydantic, no torch -- so there is nothing to gain from the
-# CUDA base image the eventual LLM pipeline will need. ~150 MB builds in about a
+# CUDA base image the eventual LLM pipeline will need. It builds in about a
 # minute, which keeps the one path we exercise least often (see below) as short
 # and as reliable as possible.
+#
+# The size is measured, never asserted here: the `build-image` workflow prints
+# it, and README.md records the figure for the last tagged image. Do not restate
+# a number in this file -- the build host cannot run a container (see below), so
+# anything written here would be a guess that outlives the build it described.
 #
 # The build host has no Docker. Rootless podman is installed and does start, so
 # "no container runtime" overstated it -- but it maps a single UID, because

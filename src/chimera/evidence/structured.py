@@ -1,7 +1,10 @@
 """Features from the structured prompt (the "patient card").
 
 For Tasks 1 and 2 this is the whole feature source: the numeric panel is populated
-in 100% of released cases and the biopsy grades in 74% / 100%, so there is no need
+in 100% of released cases, and the biopsy grades in 0% / 100% -- release Version 3
+deleted ``bx_isup`` from all 195 Task 1 prompts and kept it on all 153 Task 2 ones.
+(That read 74% / 100% until Aug 28; 74% was the Version 2 Task 1 fill and Task 1's
+partition has not consulted the grade since C2 in any case.) So there is no need
 to parse the narrative reports -- which, unlike Task 3's, are genuinely varied prose
 with per-hospital headers and phrasings. Task 3 is the reverse case and is handled
 in :mod:`chimera.evidence.reports`.
