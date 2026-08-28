@@ -54,3 +54,16 @@ htmlcov/
 .DS_Store
 .loglogin
 .claude/settings.local.json
+
+# --- Platform artefacts pulled down by hand ----------------------------------
+# Leaderboard metrics dumps, the debug-submission screenshot and its details
+# page, and the data-download blurb. Provenance is the Grand Challenge web UI,
+# not this repo, and the numbers that matter are already quoted with their
+# dates in docs/debug-phase-notes.md. The metrics files also carry per-case
+# rows derived from the challenge data, which is CC BY-NC-SA and stays out.
+/data_download_info.txt
+/debug_submission.png
+/debug_submission_details.txt
+/metrics_ours.json
+/metrics_top_score.json
+/metrics_august_26.json
