@@ -16,6 +16,12 @@ from chimera.evidence import classify_prior_biopsy, extract_reports, extract_str
 from chimera.evidence.reports import NOT_ASSESSED
 from chimera.mcp.client import DirectStore
 from chimera.models.guidelines import capra_s, eau_risk, stratum
+from chimera.models.stratified import (
+    FALLBACK_MONTHS,
+    MONTHS_AT_ZERO_RISK,
+    MONTHS_PER_CAPRA_POINT,
+    predict_months,
+)
 
 SURGICAL = (
     "The robot-assisted radical prostatectomy specimen showed Gleason 4+3 "
@@ -348,6 +354,61 @@ def test_pnx_scores_no_nodal_points_but_still_counts():
     p = _reports(3, clinical={"surgical_pathology_report": text})
     assert p.lymph_nodes == NOT_ASSESSED
     assert capra_s(p, 12.0) == pytest.approx(9.0)
+
+
+# --------------------------------------------------------------------------- #
+# Task 3: the csPCa tie-break
+#
+# The whole safety argument for consulting the MRI is that its weight is a *bound*
+# rather than a tuned coefficient -- under one CAPRA-S point, so it can only order
+# cases the nomogram scores equally. These pin that bound, because it is what makes
+# the term safe on a cohort whose csPCa model may be calibrated differently.
+# --------------------------------------------------------------------------- #
+
+def _months(clinical: dict, psa: float | None) -> float:
+    case = _case(3, {"psa": psa} if psa is not None else {}, clinical)
+    return predict_months(case, DirectStore(case))
+
+
+def test_cspca_never_crosses_a_full_capra_point():
+    """The guarantee: a case cannot outrank one scoring a full point higher.
+
+    Swept over the whole probability range, including the extremes, since the
+    bound has to hold for any value Karolinska's model might emit.
+    """
+    lower = SURGICAL.replace("lymph node metastasis was present",
+                             "there was no lymph node metastasis")   # one point less
+    for p in (0.0, 0.01, 0.5, 0.99, 1.0):
+        radiology = RADIOLOGY.replace("0.9527162", str(p))
+        # The lower-risk specimen gets the most favourable csPCa, the higher-risk
+        # one the least -- the hardest case for the bound.
+        low = _months({"surgical_pathology_report": lower, "radiology_report": radiology}, 12.0)
+        high = _months({"surgical_pathology_report": SURGICAL,
+                        "radiology_report": RADIOLOGY.replace("0.9527162", "0.0")}, 12.0)
+        assert high < low, f"csPCa {p} reordered across a CAPRA-S point"
+
+
+def test_cspca_does_break_a_tie():
+    """Bounded is not inert: equal CAPRA-S must still be ordered by the MRI."""
+    same = {"surgical_pathology_report": SURGICAL}
+    hot = _months({**same, "radiology_report": RADIOLOGY.replace("0.9527162", "0.95")}, 12.0)
+    cold = _months({**same, "radiology_report": RADIOLOGY.replace("0.9527162", "0.05")}, 12.0)
+    assert hot < cold
+
+
+def test_absent_cspca_leaves_the_capra_ordering_untouched():
+    """A report that omits the line must reproduce the pre-tie-break months exactly."""
+    clinical = {"surgical_pathology_report": SURGICAL}
+    p = _reports(3, clinical=clinical)
+    assert p.cspca is None
+    assert _months(clinical, 12.0) == pytest.approx(
+        MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * capra_s(p, 12.0)
+    )
+
+
+def test_unreadable_specimen_still_falls_back_rather_than_ranking_on_the_mri_alone():
+    """No CAPRA-S means no ordering claim at all -- the MRI must not stand in for it."""
+    assert _months({"radiology_report": RADIOLOGY}, None) == pytest.approx(FALLBACK_MONTHS)
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,7 @@ Writes ``guideline_params.json`` next to the predictor that reads it: leaf label
 reasoning constants per decision, and the cross-validated score each task was
 accepted on. Models cross the boundary into the submission image as **plain JSON**,
 never as pickles, so the container keeps its standard-library-only import closure and
-stays at ~47 MB -- and so every number that influences a prediction is legible in the
+stays small -- and so every number that influences a prediction is legible in the
 diff.
 
 Re-run whenever labels grow; the challenge site says they arrive incrementally.
@@ -108,11 +108,12 @@ def main() -> int:
         # Task 3 has nothing to fit; the record exists so the file documents all three.
         rows3 = load_rows(args.cases, args.gt, 3, session)
         entry3: dict[str, Any] = {
-            "model": "capra_s",
+            "model": "capra_s + cspca tie-break",
             "fitted": False,
             "n_labeled": len(rows3),
             "months_at_zero_risk": stratified.MONTHS_AT_ZERO_RISK,
             "months_per_capra_point": stratified.MONTHS_PER_CAPRA_POINT,
+            "cspca_tiebreak_weight": stratified.CSPCA_TIEBREAK_WEIGHT,
         }
         if rows3 and not args.skip_cv:
             result = cross_validate(
@@ -121,7 +122,8 @@ def main() -> int:
             entry3["cv_score"] = result["mean"]
             entry3["cv_sd"] = 0.0
             print(f"=== task3 (n={len(rows3)}) ===")
-            print(f"  CAPRA-S, nothing fitted -> c-index {result['mean']:.4f}\n")
+            print("  CAPRA-S + csPCa tie-break, nothing fitted "
+                  f"-> c-index {result['mean']:.4f}\n")
         fitted["task3"] = entry3
 
     if args.dry_run:

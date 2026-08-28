@@ -205,15 +205,60 @@ def eau_risk(features: StructuredFeatures) -> str | None:
 #: ===============================  ========  =======  ================
 #:
 #: The gap clears the repeated-CV spread that ``docs/plan.md`` sets as the bar for
-#: acting at all, and the near-zero split variance is the tell: with the extra
-#: leaf the fitted labels move from fold to fold, so most of what it buys is
-#: noise. The more expressive six-leaf variant landing *between* the two says the
-#: same thing from the other side.
+#: acting at all. What actually changes is six patients -- prior-positive with a
+#: low-PI-RADS MRI, 2 biopsied against 4 not. The extra leaf calls them all `yes`;
+#: PI-RADS alone calls them all `no` and is right twice as often, which is also the
+#: defensible recommendation (known cancer, unremarkable MRI, stay on surveillance).
 #:
-#: What actually changes is six patients -- prior-positive with a low-PI-RADS MRI,
-#: 2 biopsied against 4 not. The extra leaf calls them all `yes`; PI-RADS alone
-#: calls them all `no` and is right twice as often, which is also the defensible
-#: recommendation (known cancer, unremarkable MRI, stay on surveillance).
+#: **The conclusion above is right and the reasoning that used to accompany it was
+#: wrong**, so the correction is recorded rather than quietly dropped. This note
+#: previously read the near-zero split variance as "most of what the extra leaf buys
+#: is noise". That conflates two different jobs a feature can do. A leaf can only
+#: assign a *constant*, so the table above asks one question only: does some constant
+#: label, applied to prior-positive cases, beat PI-RADS? It does not. But that is the
+#: **classifier** question, and prior-biopsy status is not a classifier here -- it is
+#: a **router**, and an excellent one. Among the 91 Task 1 cases with a high-PI-RADS
+#: MRI:
+#:
+#: =====================  ===  ====  ====  ========
+#: prior biopsy             n   yes    no   errors
+#: =====================  ===  ====  ====  ========
+#: none                    20    20     0         0
+#: negative                15    13     2         2
+#: positive                43    21    22        22
+#: =====================  ===  ====  ====  ========
+#:
+#: 22 of our 24 false-`yes` sit in that last row -- 47% of the leaf holds 92% of the
+#: error. A feature that isolates the errors into a 50/50 subgroup is a good router
+#: and a useless classifier at the same time, and testing only the second role
+#: discards both. The right question is not "what constant fits these 43" but "what
+#: *else*, inside these 43, separates them". Everything reachable was tried:
+#:
+#: * Card features are flat: psa 7.8 / 8.0, cspca 0.8 / 0.8, age 67 / 66.5, vol
+#:   47 / 53 for `yes` / `no`.
+#: * Lesion size in the radiology report (served on 43/43) is median 12.0 mm either
+#:   way, and the interval-growth vocabulary is boilerplate.
+#: * A phrase scan over the served sections finds only `isup` (n=5) and `gleason`
+#:   (n=10) discriminating at all; `surveillance` points the wrong way.
+#: * Biopsy ISUP grade, taken from the Version 2 answer key so coverage is complete,
+#:   is **non-monotone** in P(`no`): grade 1 -> 0.53, 2 -> 0.38, 3 -> 0.75, 4 -> 0.50,
+#:   5 -> 1.00. On Task 1 a `yes`->`no` flip earns +0.0066 when right and costs
+#:   -0.0081 when wrong, so a flip rule must clear **0.55 precision**. `ISUP >= 2`
+#:   fires on 28 of the 43 at precision **0.50** -- below break-even, and worth
+#:   **-0.0210** on Task 1.
+#:
+#: One near miss is worth naming because it looks like a result. Reading the grade
+#: out of the *text* rather than the answer key gives 7 of 8 `no` and appears to be
+#: worth +0.0152. It is a selection artifact. Task 1 is not served
+#: ``pathology_report`` (0/43), which carries 86% of grade mentions against 54% for
+#: the notes and radiology report, so a text-derived grade covers only 11 of the 43.
+#: The cases whose notes happen to state a grade are 7/8 `no`; the ~20 that do not
+#: are roughly even. That is a documentation habit of one site, and 100 of the 250
+#: test cases come from Karolinska, whose referral prose we have never seen.
+#:
+#: So the leaf stays as it is, on measurement rather than on the earlier misreading.
+#: Revisit only with a feature that separates *within* the prior-positive branch --
+#: not with another constant.
 TASK1_LEAVES: tuple[str, ...] = (
     "naive_pirads_high",
     "naive_pirads_low",

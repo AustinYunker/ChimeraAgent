@@ -51,6 +51,36 @@ MIN_ROWS_FOR_CONDITIONAL_FIT = 8
 MONTHS_AT_ZERO_RISK = 120.0
 MONTHS_PER_CAPRA_POINT = 8.0
 
+#: Weight on the MRI's AI-predicted probability of clinically significant cancer,
+#: added to CAPRA-S to order cases the nomogram cannot separate.
+#:
+#: CAPRA-S is an integer score and takes only 12 distinct values across the 75
+#: released cases, so it *ties* 104 of the 1130 comparable survival pairs -- 9% of
+#: the metric -- and the C-index banks a flat 0.5 on every one of them. `cspca` is
+#: parsed from the radiology report on 75/75, is already retrieved (see
+#: :func:`chimera.evidence.reports.extract_reports`, so this costs no extra tool
+#: call), and is only weakly correlated with CAPRA-S (Spearman 0.488) because the
+#: nomogram is pathology-only and ignores imaging entirely. It resolves those tied
+#: pairs at 0.663, lifting the C-index from 0.7372 to 0.7522.
+#:
+#: **The value is a bound, not a tuned weight.** `cspca` is a probability in [0, 1],
+#: so the added term is strictly less than one CAPRA-S point: it can never move a
+#: case past one scoring a full point higher. It reorders *within* a band and nowhere
+#: else. That is what makes it safe on a test cohort we have not seen -- it needs
+#: `cspca` only to beat a coin flip within a band, not to be calibrated the way
+#: Radboudumc's model is, and a case whose report omits the line simply keeps its
+#: CAPRA-S ordering. One caveat: :func:`~chimera.models.guidelines.capra_s` rescales
+#: when a component is unreadable, so a partially-parsed specimen scores fractionally
+#: and two such cases can sit less than a point apart. The guarantee is then "cannot
+#: cross a full CAPRA point" rather than "only breaks exact ties". All 75 released
+#: cases parse all 12 points, so that is a test-set consideration only.
+#:
+#: Paired bootstrap over 4000 resamples: +0.0150, 95% CI [-0.0067, +0.0396],
+#: P(gain) 0.90. The interval crosses zero -- with 19 events nothing on this cohort
+#: is individually significant -- which is why the calibration-free half of the
+#: available gain is the only half taken. See ``docs/plan.md``.
+CSPCA_TIEBREAK_WEIGHT = 0.99
+
 
 # --------------------------------------------------------------------------- #
 # Records the scorer compares on
@@ -393,10 +423,19 @@ def predict_record(
 # --------------------------------------------------------------------------- #
 
 def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
-    """Predicted months to recurrence, ordered by CAPRA-S. Nothing is fitted."""
-    score = capra_s(extract_reports(store), extract_structured(case, store).psa)
+    """Predicted months to recurrence, ordered by CAPRA-S with the MRI as a
+    tie-breaker. Nothing is fitted -- both constants are chosen, not learned.
+
+    The csPCa term is bounded below one CAPRA-S point by construction, so it only
+    orders cases the nomogram scores equally; see :data:`CSPCA_TIEBREAK_WEIGHT`.
+    A report that does not state it leaves the CAPRA-S ordering untouched.
+    """
+    pathology = extract_reports(store)
+    score = capra_s(pathology, extract_structured(case, store).psa)
     if score is None:
         return FALLBACK_MONTHS
+    if pathology.cspca is not None:
+        score += CSPCA_TIEBREAK_WEIGHT * pathology.cspca
     months = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * score
     return max(1.0, months)
 

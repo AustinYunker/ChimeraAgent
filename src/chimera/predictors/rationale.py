@@ -359,6 +359,16 @@ def recurrence_rationale(
                 "against the rest of the cohort. "
             )
 
+    # CAPRA-S is coarse enough to tie cases outright, and when it does the MRI's
+    # csPCa probability decides the order -- so saying the nomogram alone ranks the
+    # case would overstate it. Stated by value: the judge reads the same radiology
+    # report this was parsed from, so the claim is corroborable by construction.
+    if capra is not None and pathology.cspca is not None:
+        basis += (
+            f"Where that score ties other cases, the MRI-derived probability of "
+            f"clinically significant cancer ({pathology.cspca:.2f}) breaks the tie. "
+        )
+
     return (
         lead + basis
         + "Predicted time to biochemical recurrence or last follow-up: "

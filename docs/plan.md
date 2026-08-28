@@ -31,8 +31,8 @@ An LLM asked to emit all of this in one shot leaves measurable points on the tab
 
 | Constraint | Consequence |
 |---|---|
-| **No Docker** (only singularity-ce 4.1.2; `/etc/subuid` empty → rootless podman/buildah unavailable) | Build the submission image in **GitHub Actions**, download the `docker save` tarball artifact |
-| **2× Tesla V100-SXM2-32GB, compute capability 7.0** | vLLM 0.25 (baseline pin) will not run on Volta. Dev locally against an **OpenAI-compatible endpoint** (llama.cpp / Ollama) using the baseline's existing `provider: openai` path |
+| **Cannot build the image here.** Rootless podman is installed and starts, but `/etc/subuid` has no entry for the build user, so it maps a single UID and fails on `FROM` while unpacking the base layer | Build the submission image in **GitHub Actions**, download the `docker save` tarball artifact. *(Corrected Aug 28: this row read "No Docker (only singularity-ce 4.1.2)"; the failure is a UID-mapping one, and the `Dockerfile` header carries the exact `ApplyLayer` error.)* |
+| **2× NVIDIA RTX A6000, 48 GB, compute capability 8.6** | sm_86 is inside vLLM's support range, so the Volta workaround this row used to describe is moot. *(Corrected Aug 28 against `nvidia-smi`; the row previously read "2× Tesla V100-SXM2-32GB, compute capability 7.0" and drove a decision — dev against an OpenAI-compatible endpoint — that we made for other reasons anyway.)* |
 | GC target GPU is T4 (16 GB, sm_75) or **A10G (24 GB, sm_86)** | Choose **A10G** — sm_86 is safely inside vLLM support and 24 GB removes quantisation pressure |
 | `/` has 1.6 TB local disk; NFS home is 98% full | Keep model weights, caches, and builds under local scratch, not NFS |
 | HuggingFace reachable; 48 cores; 125 GB RAM | Fine for training and for running the evaluator natively |
@@ -252,6 +252,81 @@ oracle.
 > two fifths each. The ordering above survives — it moves *against* Task 3 and
 > *for* the two decision tasks — but the rationale component those tasks now carry
 > at 0.20 is not priced anywhere in this section.
+
+### Item 5 — Task 1 decision accuracy ✅ *closed Aug 28: measured, not deferred*
+
+Task 1 sits at 65/91 = 0.714 accuracy with `no` recall of 11/35, and 24 of its 26
+errors are false-`yes`. Closed with **no model change**, because the errors turned
+out to be concentrated in a place nothing reachable can separate.
+
+They are not diffuse. Among the 91 high-PI-RADS cases:
+
+| prior biopsy | n | yes | no | errors |
+|---|---|---|---|---|
+| none | 20 | 20 | 0 | 0 |
+| negative | 15 | 13 | 2 | 2 |
+| **positive** | **43** | **21** | **22** | **22** |
+
+22 of the 24 false-`yes` sit in that last row — 47% of the leaf holding 92% of the
+error, split almost exactly in half. That reframes the C2 finding recorded in
+`guidelines.TASK1_LEAVES`, whose docstring has been corrected: prior-biopsy status
+is an excellent **router** and a useless **classifier**, and the C2 experiment
+tested only the second role. A stratification leaf can assign only a constant, so
+"does a constant beat PI-RADS here" was the wrong question; the right one is what
+separates *within* the 43. Everything reachable was tried and none of it does —
+card features are flat, lesion size and growth language do not separate, and biopsy
+ISUP grade (taken from the Version 2 answer key, so coverage is complete) is
+non-monotone in P(`no`) and fires at 0.50 precision against a 0.55 break-even,
+worth **−0.0210**.
+
+One near miss is recorded because it looks like a result: reading the grade out of
+the *text* gives 7 of 8 `no` and appears worth +0.0152. It is a selection artifact.
+Task 1 is not served `pathology_report` (0/43), so a text-derived grade covers only
+11 of the 43, and the cases whose notes happen to state a grade are the ones one
+site documents that way. 100 of the 250 test cases are Karolinska.
+
+**Method note.** This is the second finding in a row where the honest answer was
+"the cohort cannot tell us". Both were kept as documentation rather than shipped as
+a rule, and both docstrings now record the measurement rather than the intuition.
+
+### Item 7 — Task 3 C-index ✅ *Aug 28: +0.0150 on Task 3, +0.0030 overall*
+
+Task 3 had never been touched: `"fitted": false`, CAPRA-S mapped through a hardcoded
+linear function. Two facts closed off most of the obvious surface. Because the
+C-index depends only on *ordering* and that map is monotone, `MONTHS_AT_ZERO_RISK`
+and `MONTHS_PER_CAPRA_POINT` **cannot move the score at all**. And there is no
+missingness headroom: all 75 cases parse all 12 CAPRA-S points.
+
+The headroom was structural instead. CAPRA-S is an integer score taking 12 distinct
+values over 75 cases, so it **ties 104 of the 1130 comparable pairs** — 9% of the
+metric — and the C-index banks a flat 0.5 on every one. The MRI report's AI-predicted
+csPCa probability is parsed on 75/75, is *already retrieved* (so it costs no tool
+call and no reveal change), and is only weakly correlated with the nomogram
+(Spearman 0.488) because CAPRA-S is pathology-only. It resolves those tied pairs at
+0.663.
+
+Shipped as `capra_s + 0.99 * cspca`. The weight is a **bound, not a tuned
+coefficient**: since `cspca` ∈ [0, 1] the term is strictly under one CAPRA point, so
+it orders cases *within* a band and never across one. That is what makes it safe on
+a cohort we have not seen — it needs `cspca` only to beat a coin flip within a band,
+not to be calibrated the way Radboudumc's model is, and a report omitting the line
+falls back to today's ordering exactly.
+
+| | C-index | Δ | 95% CI (paired bootstrap, 4000×) | P(gain) |
+|---|---|---|---|---|
+| CAPRA-S | 0.7372 | — | — | — |
+| **+ csPCa tie-break** | **0.7522** | **+0.0150** | [−0.0067, +0.0396] | **0.90** |
+
+Official evaluator, `work/run/task3-tiebreak`: task1 0.6384 and task2 0.6603
+**unchanged and byte-identical**, task3 0.7372 → **0.7522**, overall 0.6669 →
+**0.6699**.
+
+Two things kept honestly on the record. The interval crosses zero — with 19 events
+nothing on this cohort is individually significant, and CAPRA-S's own 95% CI is
+[0.599, 0.856]. And a fuller `0.5*(capra/12) + 0.5*cspca` blend scored **higher**
+(0.7690, P(gain) 0.96) but was **rejected**: half its gain comes from reordering
+across CAPRA bands, which is the half that assumes Karolinska's csPCa model is
+calibrated like Radboudumc's. We took the calibration-free half only.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
