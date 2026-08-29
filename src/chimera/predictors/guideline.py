@@ -21,7 +21,7 @@ from typing import Any
 from chimera.contract import spec
 from chimera.contract.io import CaseInputs
 from chimera.contract.types import DecisionPrediction, Reasoning, RecurrencePrediction
-from chimera.evidence import extract_reports, extract_structured
+from chimera.evidence import extract_prior_context, extract_reports, extract_structured
 from chimera.mcp.client import ClinicalStore
 from chimera.models import stratified
 from chimera.models.guidelines import capra_s_points
@@ -71,16 +71,24 @@ class GuidelinePredictor(PriorPredictor):
 
         policy = reasoning.get("reveal_sequence")
         policy = list(policy) if isinstance(policy, list) else []
-        # Sections the extractor had to read to reach the decision -- for Task 1
-        # since release Version 3 that is the radiology report and the referral
-        # notes, which is where `bx` now lives. `stratified.fit` forces these into
-        # the fitted policy too, so this is normally a no-op; it matters when the
-        # parameter file predates the change, and reveal honesty runs the wrong
-        # way round (under-declaring what we read) if it is skipped.
+        # Sections the extractor had to read to reach the decision. Empty on the
+        # current release -- the notes fallback for `bx` is gated to Task 2, whose
+        # card still carries the field -- so this is normally a no-op. It matters
+        # on the test cohort, where the fallback can fire, and reveal honesty runs
+        # the wrong way round (under-declaring what we read) if it is skipped.
         for section in features.evidence_sections:
             if section not in policy:
                 policy.append(section)
         retrieved = self.retrieve(store, policy)
+
+        # Task 1's history, read back out of a report we have already retrieved.
+        # Gated on the ledger rather than on the task number, which is the honest
+        # form of the condition: the section is in `retrieved` only if a tool call
+        # returned it and the declaration names it, and `McpStore.section`
+        # memoises, so this second read costs neither a call nor a reveal. Where
+        # the report was never fetched -- every Task 2 leaf declares nothing --
+        # `prior` stays None and the rationale is exactly what it was.
+        prior = extract_prior_context(store) if "radiology_report" in retrieved else None
 
         return DecisionPrediction(
             task=task,
@@ -94,7 +102,7 @@ class GuidelinePredictor(PriorPredictor):
                 # prostate cancer, EAU high risk: ...") rather than trailing it as
                 # a "Guideline basis:" note, which the judge read as procedural
                 # meta-data rather than as reasoning.
-                free_text=self.free_text(task, features, decision, confidence),
+                free_text=self.free_text(task, features, decision, confidence, prior),
             ),
         )
 

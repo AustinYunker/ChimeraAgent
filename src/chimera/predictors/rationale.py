@@ -72,7 +72,7 @@ Pure standard library: this ships inside the submission container.
 
 from __future__ import annotations
 
-from chimera.evidence.reports import NOT_ASSESSED, SurgicalPathology
+from chimera.evidence.reports import NOT_ASSESSED, PriorContext, SurgicalPathology
 from chimera.evidence.structured import StructuredFeatures, ct_stage_name
 from chimera.models.guidelines import CAPRA_S_MAX
 
@@ -208,23 +208,116 @@ def _prior_biopsy_clause(features: StructuredFeatures) -> str:
     return _PRIOR_BIOPSY_PHRASE.get(features.prior_biopsy, "")
 
 
+def _reported_history_clause(prior: PriorContext) -> str:
+    """Prior context the MRI report states outright.
+
+    Not gated on :data:`CITABLE`, and the exception is principled rather than
+    convenient: every field here was parsed *out of* ``radiology_report``, which
+    is a section the Task 1 policy reveals and therefore one the judge is handed.
+    These claims are corroborable by construction, in the way the card's are not
+    -- the same argument :func:`_pathology_findings` runs on Task 3.
+
+    Only the two fields the parser pins individually are cited.
+    :attr:`PriorContext.prior_care` is deliberately not: it is an OR over several
+    phrasings, so a match tells us *some* earlier episode exists without telling
+    us which, and naming one would be a guess. It gates
+    :func:`_history_gap_clause` instead, where it is used to establish that there
+    is a history to be silent about rather than to assert what the history was.
+    """
+    clauses: list[str] = []
+    if prior.biopsy_result:
+        clause = _PRIOR_BIOPSY_PHRASE.get(prior.biopsy_result, "")
+        if clause and prior.prior_grade is not None:
+            clause += f" (ISUP grade group {prior.prior_grade})"
+        clauses.append(clause)
+    if prior.prior_pirads is not None:
+        clauses.append(f"an earlier PI-RADS {prior.prior_pirads}")
+    return _join(clauses)
+
+
+def _history_gap_clause(prior: PriorContext) -> str:
+    """What the record does not supply -- which is a third of the references.
+
+    The reference rationales for Task 1 are not all interpretations of the
+    findings. On the prior-biopsy-positive cases, 24% of them are the urologist
+    saying what is *missing* -- the earlier ISUP grade, or whether the lesion has
+    grown -- against 4% of the never-biopsied ones. Neither fact is reachable:
+    release Version 3 removed ``bx`` and the grade fields from all 195 Task 1
+    prompts, Task 1 is served no pathology report, and no released Task 1
+    radiology report states an interval comparison (0 of 91). So the gap is real
+    on nearly every case, and saying so is the register the reference is written
+    in rather than a hedge.
+
+    It is emphatically not a hedge, and the wording keeps it from becoming one:
+    it follows a decision sentence that has already been stated firmly, and
+    ``confidence`` stays untouched. Always-``clear`` beats always-``borderline``
+    even on this stratum (0.643 against 0.633 under ``1 - |delta|/2``), so
+    softening the field to match the prose would cost more than the prose earns.
+
+    Both halves are conditioned on what the report actually says, because both
+    have counterexamples in the released data: 3 of 91 reports *do* quote the
+    earlier ISUP grade, and the Karolinska templates -- 100 of the 250 test cases
+    -- are unseen, so an unconditional "no comparison is reported" would be the
+    same fabrication this module exists to avoid.
+    """
+    # Each gap carries both its own sentence and the noun phrase it contributes
+    # to the joint one, because "Any comparison with prior imaging is not
+    # reported" is not English and a sentence that reads as generated is exactly
+    # what rubric item 1 marks down.
+    missing: list[tuple[str, str]] = []
+    # Only where a positive biopsy is on the record: an ungraded *negative*
+    # biopsy has no grade to be missing, and a never-biopsied man has no biopsy.
+    if prior.biopsy_result == "positive" and prior.prior_grade is None:
+        missing.append((
+            "The earlier biopsy's ISUP grade is not reported.",
+            "the earlier biopsy's ISUP grade",
+        ))
+    if prior.has_history and not prior.states_comparison:
+        missing.append((
+            "No comparison with prior imaging is reported.",
+            "any comparison with prior imaging",
+        ))
+
+    if not missing:
+        return ""
+    if len(missing) == 1:
+        return f" {missing[0][0]}"
+    return f" Neither {missing[0][1]} nor {missing[1][1]} is reported."
+
+
 def biopsy_rationale(
-    features: StructuredFeatures, decision: str, confidence: str
+    features: StructuredFeatures,
+    decision: str,
+    confidence: str,
+    prior: PriorContext | None = None,
 ) -> str:
     """Task 1: what the MRI and the PSA show, then the recommendation.
 
     No digital rectal examination, deliberately -- see the ``dre`` row of the
     module docstring's table. It is the one clinical finding here that the
     reports usually do not record, and asserting it cost more than it bought.
+
+    ``prior`` is the history read out of the MRI report itself. It defaults to
+    empty so a caller with no store -- the tests, and the constant baseline --
+    gets exactly the text it got before.
     """
+    prior = prior or PriorContext()
     findings = [
         _pirads_clause(features),
         _psa_clause(features),
         _grade_clause(features),
-        _prior_biopsy_clause(features),
+        # The card's ``bx`` where the release still carries it, and the report's
+        # own statement otherwise. Never both: on a case where the card speaks,
+        # the report clause would only repeat it in different words.
+        _prior_biopsy_clause(features) or _reported_history_clause(prior),
     ]
     lead = f"{_join(findings)}. " if any(findings) else ""
-    return lead + _decision_phrase(decision) + _CONFIDENCE_CLAUSE.get(confidence, "")
+    return (
+        lead
+        + _decision_phrase(decision)
+        + _history_gap_clause(prior)
+        + _CONFIDENCE_CLAUSE.get(confidence, "")
+    )
 
 
 def treatment_rationale(

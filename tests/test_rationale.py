@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from chimera.evidence.reports import NOT_ASSESSED, SurgicalPathology
+from chimera.evidence.reports import NOT_ASSESSED, PriorContext, SurgicalPathology
 from chimera.evidence.structured import StructuredFeatures
 from chimera.models.guidelines import capra_s_points
 from chimera.predictors.rationale import (
@@ -150,6 +150,109 @@ def test_an_empty_case_still_yields_a_decision_sentence():
     text = biopsy_rationale(StructuredFeatures(), "no", "uncertain")
     assert text.startswith("Prostate biopsy is not indicated at present.")
     assert "genuinely uncertain" in text
+
+
+# --------------------------------------------------------------------------- #
+# Task 1: the history the report states, and the gaps it leaves
+# --------------------------------------------------------------------------- #
+#
+# A third of the Task 1 reference rationales are not interpretations of the
+# findings at all -- on the prior-biopsy-positive cases 24% of them are the
+# urologist naming what is *missing*, the earlier ISUP grade or whether the
+# lesion has grown. Neither is reachable on this release, so the rationale says
+# so. The two tests that matter are the ones guarding against saying it when it
+# is false: measurement found counterexamples to both halves of the first draft.
+
+_POSITIVE = PriorContext(biopsy_result="positive", prior_care=True)
+
+
+def test_a_never_biopsied_case_is_unchanged():
+    """No history, no gap sentence. A first presentation has nothing to be
+    silent about, and inventing an absence is as bad as inventing a finding."""
+    features = StructuredFeatures(pirads=5, psa=5.9, psad=0.199)
+    assert biopsy_rationale(features, "yes", "clear", PriorContext()) == biopsy_rationale(
+        features, "yes", "clear"
+    )
+
+
+def test_a_stated_prior_grade_is_cited_rather_than_denied():
+    """The near-miss this test exists for: 3 of the 91 released Task 1 reports
+    *do* quote the earlier ISUP grade. An unconditional "the grade is not
+    reported" would have been a fabrication on every one of them."""
+    features = StructuredFeatures(pirads=5, psa=7.0, psad=0.427)
+    prior = PriorContext(biopsy_result="positive", prior_grade=2, prior_care=True)
+    text = biopsy_rationale(features, "yes", "clear", prior)
+    assert "previous biopsy positive for cancer (ISUP grade group 2)" in text
+    assert "ISUP grade is not reported" not in text
+    # The interval comparison is still missing, and is still said so.
+    assert text.rstrip().endswith("No comparison with prior imaging is reported.")
+
+
+def test_a_reported_comparison_is_not_called_missing():
+    """No released Task 1 report states an interval comparison -- 0 of 91 -- but
+    100 of the 250 test cases come from Karolinska, whose templates we have never
+    seen. The claim is conditioned on the text rather than on that count."""
+    features = StructuredFeatures(pirads=5, psa=9.3, psad=0.516)
+    prior = PriorContext(biopsy_result="positive", prior_care=True, states_comparison=True)
+    text = biopsy_rationale(features, "yes", "clear", prior)
+    assert "comparison with prior imaging" not in text
+    assert text.rstrip().endswith("The earlier biopsy's ISUP grade is not reported.")
+
+
+def test_a_negative_prior_biopsy_has_no_grade_to_be_missing():
+    """An ungraded negative biopsy is not an omission -- there was nothing to
+    grade. Only the imaging comparison is genuinely absent."""
+    features = StructuredFeatures(pirads=3, psa=6.0, psad=0.13)
+    prior = PriorContext(biopsy_result="negative", prior_care=True)
+    text = biopsy_rationale(features, "no", "clear", prior)
+    assert "previous negative biopsy" in text
+    assert "ISUP" not in text
+    assert text.rstrip().endswith("No comparison with prior imaging is reported.")
+
+
+def test_both_gaps_read_as_one_sentence():
+    features = StructuredFeatures(pirads=5, psa=187.0, psad=3.26)
+    text = biopsy_rationale(features, "yes", "clear", _POSITIVE)
+    assert text.rstrip().endswith(
+        "Neither the earlier biopsy's ISUP grade nor any comparison with prior "
+        "imaging is reported."
+    )
+    # The awkward machine-made form the joint phrasing exists to avoid.
+    assert "is not reported" not in text
+
+
+def test_naming_a_gap_never_softens_the_decision():
+    """The gap is a statement about the record, not about our confidence.
+    Always-``clear`` beats always-``borderline`` even on this stratum (0.643
+    against 0.633 under ``1 - |delta|/2``), so the prose must not drift into
+    hedging where the field does not."""
+    features = StructuredFeatures(pirads=5, psa=7.0, psad=0.4)
+    text = biopsy_rationale(features, "yes", "clear", _POSITIVE)
+    assert "Prostate biopsy is indicated." in text
+    assert "borderline" not in text and "uncertain" not in text
+    # The decision is stated before the gap, never qualified by it.
+    assert text.index("Prostate biopsy is indicated.") < text.index("Neither")
+
+
+def test_the_cards_prior_biopsy_wins_where_the_release_still_carries_it():
+    """``bx`` is the organizers' own coding. Where it survives on the card the
+    report-derived reading must not restate it in different words."""
+    features = StructuredFeatures(pirads=4, psa=7.4, prior_biopsy="negative")
+    text = biopsy_rationale(features, "yes", "clear", _POSITIVE)
+    assert "previous negative biopsy" in text
+    assert "positive for cancer" not in text
+
+
+def test_prior_care_alone_never_asserts_what_the_history_was():
+    """``prior_care`` is an OR over several phrasings -- "active surveillance",
+    "re-evaluation of prior", "previous histopathology" -- so a match says an
+    earlier episode exists without saying which. It gates the gap sentence and
+    contributes no claim of its own. Five released cases reach it this way."""
+    features = StructuredFeatures(pirads=2, psa=4.7, psad=0.14)
+    text = biopsy_rationale(features, "no", "clear", PriorContext(prior_care=True))
+    assert "biopsy positive" not in text and "negative biopsy" not in text
+    assert "PI-RADS 2" in text
+    assert text.rstrip().endswith("No comparison with prior imaging is reported.")
 
 
 # --------------------------------------------------------------------------- #

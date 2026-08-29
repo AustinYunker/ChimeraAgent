@@ -25,14 +25,21 @@ from chimera.evidence.notes import (
     classify_prior_biopsy,
     prior_biopsy_from_notes,
 )
-from chimera.evidence.reports import SurgicalPathology, extract_reports
+from chimera.evidence.reports import (
+    PriorContext,
+    SurgicalPathology,
+    extract_prior_context,
+    extract_reports,
+)
 from chimera.evidence.structured import StructuredFeatures, extract_structured
 
 __all__ = [
     "NOTE_SECTIONS",
+    "PriorContext",
     "StructuredFeatures",
     "SurgicalPathology",
     "classify_prior_biopsy",
+    "extract_prior_context",
     "extract_reports",
     "extract_structured",
     "prior_biopsy_from_notes",

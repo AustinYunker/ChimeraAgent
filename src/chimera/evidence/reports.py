@@ -193,3 +193,116 @@ def extract_reports(store: ClinicalStore) -> SurgicalPathology:
         cspca=_num(cspca, float),
         cci=_num(cci, int),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Task 1: the history the MRI report carries, and the gaps it leaves
+# --------------------------------------------------------------------------- #
+
+#: An explicitly stated prior biopsy result. Only the templates that name the
+#: polarity outright -- an inferred result would be a claim we cannot corroborate.
+_PRIOR_BIOPSY_RESULT = (
+    r"prior (?:biopsy|bx)[^.;|]{0,30}?\b(positive|negative)\b"
+    r"|previously (positive|negative) biopsy"
+    r"|(positive|negative) (?:prior|previous|earlier) biops"
+)
+
+#: An ISUP grade group from a *previous* histopathology, as quoted by the MRI
+#: report. A graded biopsy is a positive one, so this also settles the polarity.
+_PRIOR_GRADE = r"ISUP\s*(?:grade\s*group\s*|GG\s*)?(\d)\b"
+
+#: A PI-RADS score attributed to an earlier study rather than to this one.
+_PRIOR_PIRADS = r"(?:earlier|previous|prior)\s+PI-?RADS\s*\"?(\d)"
+
+#: Evidence that this patient is already under prostate-cancer care.
+_PRIOR_CARE = (
+    r"active surveillance|previously diagnosed|prior prostate cancer"
+    r"|known (?:prostate )?(?:cancer|malignancy)|re-evaluation of prior"
+    r"|prior (?:biopsy|bx)|previous biopsy|previous histopathology|earlier biops"
+)
+
+#: An interval comparison against a previous study. **No released Task 1 report
+#: contains one** -- 0 of 91 -- which is precisely the gap a third of the reference
+#: rationales complain about. It is parsed anyway rather than assumed absent,
+#: because a rationale that says "no comparison is reported" when one *is* reported
+#: would be the same fabrication we are trying to avoid, and the Karolinska
+#: templates are unseen.
+_COMPARISON = (
+    r"compared (?:with|to) (?:the )?(?:prior|previous|earlier)"
+    r"|interval (?:growth|increase|change|progression)"
+    r"|\b(?:stable|stabile|unchanged)\b"
+    r"|no change since|since the (?:prior|previous|earlier)"
+)
+
+
+@dataclass(slots=True)
+class PriorContext:
+    """What the MRI report says about this patient's history -- and what it omits.
+
+    Task 1's decision hangs on a history the payload mostly does not contain. The
+    reference rationales say so out loud: 24% of the prior-biopsy-positive cases
+    are the urologist asking for the earlier ISUP grade or for whether the lesion
+    has grown, against 4% of the never-biopsied ones. Neither fact is on the
+    patient card -- release Version 3 removed ``bx`` and the grade fields from all
+    195 Task 1 prompts -- and Task 1 is served no pathology report, so the MRI
+    report's own indication line is the only place either can appear.
+
+    Every field is read from ``radiology_report``, which the Task 1 policy already
+    reveals, so this costs no tool call and does not touch ``reveal_sequence``.
+    """
+
+    #: ``positive`` / ``negative``, only where the report states it outright.
+    #: Agrees with the notes-derived status on 26 of 26 released cases that state
+    #: it, and never fires on a never-biopsied one.
+    biopsy_result: str | None = None
+    #: ISUP grade group of the earlier biopsy. Stated in 3 of 91 cases.
+    prior_grade: int | None = None
+    #: PI-RADS attributed to an earlier study. Present on 5 never-biopsied cases,
+    #: which are men with a prior MRI and no biopsy -- prior context all the same.
+    prior_pirads: int | None = None
+    #: The patient is already under prostate-cancer care.
+    prior_care: bool = False
+    #: The report compares this study against a previous one.
+    states_comparison: bool = False
+
+    @property
+    def has_history(self) -> bool:
+        """Is there any earlier episode for the record to be silent about?"""
+        return bool(
+            self.biopsy_result
+            or self.prior_grade is not None
+            or self.prior_pirads is not None
+            or self.prior_care
+        )
+
+
+def extract_prior_context(store: ClinicalStore) -> PriorContext:
+    """Read the Task 1 history out of the MRI report. Never raises."""
+    text = _text(store, "radiology_report")
+    if not text:
+        return PriorContext()
+
+    match = _search(text, _PRIOR_BIOPSY_RESULT)
+    result = next((g.lower() for g in match.groups() if g), None) if match else None
+
+    grade_match = _search(text, _PRIOR_GRADE)
+    grade = int(grade_match.group(1)) if grade_match else None
+    if grade is not None and not 1 <= grade <= 5:
+        grade = None
+    # A biopsy that produced a grade was a positive biopsy. Stated rather than
+    # inferred: the report is quoting a histopathology result.
+    if grade is not None and result is None:
+        result = "positive"
+
+    pirads_match = _search(text, _PRIOR_PIRADS)
+    prior_pirads = int(pirads_match.group(1)) if pirads_match else None
+    if prior_pirads is not None and not 1 <= prior_pirads <= 5:
+        prior_pirads = None
+
+    return PriorContext(
+        biopsy_result=result,
+        prior_grade=grade,
+        prior_pirads=prior_pirads,
+        prior_care=bool(_search(text, _PRIOR_CARE)),
+        states_comparison=bool(_search(text, _COMPARISON)),
+    )

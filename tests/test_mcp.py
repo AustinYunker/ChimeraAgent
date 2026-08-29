@@ -285,6 +285,14 @@ def test_declared_reveals_are_retrieved(session, cases):
     alongside a separate dict read. Now a section can only be declared if a tool
     call returned it, and this asserts it over every fixture: nothing declared
     is absent from the ledger, and nothing declared is outside the vocabulary.
+
+    The ledger is checked in *both* directions. Over-declaring is the dishonesty
+    the rules name, but under-declaring is the same failure pointed the other
+    way -- a section read and not admitted to -- and it is the one that creeps
+    in, because it needs only a second reader of the store that the policy does
+    not know about. Task 1's :func:`~chimera.evidence.extract_prior_context` is
+    exactly such a reader; it is safe because it re-reads a section the policy
+    already declares, and this is what holds it to that.
     """
     predictor = GuidelinePredictor()
     for case in cases:
@@ -301,6 +309,9 @@ def test_declared_reveals_are_retrieved(session, cases):
             assert section in ledger, (
                 f"{case.case_id}: declared {section} but no tool call returned it"
             )
+        assert set(ledger) <= set(declared), (
+            f"{case.case_id}: read {sorted(set(ledger) - set(declared))} without declaring it"
+        )
 
 
 # -- the transport itself ----------------------------------------------------- #

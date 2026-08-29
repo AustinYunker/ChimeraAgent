@@ -12,8 +12,13 @@ from __future__ import annotations
 import pytest
 
 from chimera.contract.io import CaseInputs
-from chimera.evidence import classify_prior_biopsy, extract_reports, extract_structured
-from chimera.evidence.reports import NOT_ASSESSED
+from chimera.evidence import (
+    classify_prior_biopsy,
+    extract_prior_context,
+    extract_reports,
+    extract_structured,
+)
+from chimera.evidence.reports import NOT_ASSESSED, PriorContext
 from chimera.mcp.client import DirectStore
 from chimera.models.guidelines import capra_s, eau_risk, stratum
 from chimera.models.stratified import (
@@ -354,6 +359,70 @@ def test_pnx_scores_no_nodal_points_but_still_counts():
     p = _reports(3, clinical={"surgical_pathology_report": text})
     assert p.lymph_nodes == NOT_ASSESSED
     assert capra_s(p, 12.0) == pytest.approx(9.0)
+
+
+# --------------------------------------------------------------------------- #
+# Task 1: the history the MRI report carries
+#
+# Task 1's decision turns on a history the payload mostly does not contain --
+# release Version 3 removed `bx` and the grade fields from all 195 prompts, and
+# the task is served no pathology report -- so the MRI report's own indication
+# line is the only place any of it can appear. Everything here reads
+# `radiology_report`, which the Task 1 policy already reveals.
+# --------------------------------------------------------------------------- #
+
+def _prior(text: str) -> PriorContext:
+    return extract_prior_context(DirectStore(_case(1, clinical={"radiology_report": text})))
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Indication: prior biopsy positive for adenocarcinoma.", "positive"),
+    ("Indication: prior biopsy was negative.", "negative"),
+    ("Previously negative biopsy; rising PSA.", "negative"),
+    ("Positive previous biopsy of the left peripheral zone.", "positive"),
+])
+def test_a_stated_prior_biopsy_result_is_read(text, expected):
+    """Only templates that name the polarity outright. Measured against the
+    notes-derived status on every released case that states one: 28 of 28
+    agree, and it never fires on a never-biopsied case."""
+    assert _prior(text).biopsy_result == expected
+
+
+def test_a_quoted_grade_settles_the_polarity():
+    """A biopsy that produced a grade was a positive biopsy -- stated rather
+    than inferred, since the report is quoting a histopathology result. Three of
+    the 91 released reports do this, which is why the grade is parsed instead of
+    being declared absent."""
+    p = _prior("Re-evaluation of prior biopsy, ISUP grade group 2, left apex.")
+    assert (p.prior_grade, p.biopsy_result) == (2, "positive")
+
+
+def test_a_recommendation_to_biopsy_is_not_a_history():
+    """The failure the `prior_care` pattern was tightened for: a bare `biops`
+    matched the reports *recommending* one, which is every high-PI-RADS first
+    presentation."""
+    p = _prior("PI-RADS 5 lesion. Targeted biopsy is recommended.")
+    assert not p.has_history and not p.prior_care
+
+
+def test_this_studys_pirads_is_not_read_as_an_earlier_one():
+    p = _prior("PI-RADS: 4. Prostate volume: 40 cc.")
+    assert p.prior_pirads is None and not p.has_history
+
+
+def test_interval_language_is_recognised_even_though_no_released_case_has_it():
+    """0 of 91 released Task 1 reports state a comparison. Parsed anyway: 100 of
+    the 250 test cases come from Karolinska, and a rationale saying "no
+    comparison is reported" when one *is* reported would be a fabrication."""
+    assert _prior("Compared with the prior MRI, interval growth of the lesion.").states_comparison
+    assert _prior("The lesion is unchanged since the previous study.").states_comparison
+    assert not _prior("PI-RADS 5 lesion in the left apex.").states_comparison
+
+
+def test_an_unreadable_report_yields_an_empty_context():
+    """Never raises, and an absent section is not evidence of anything."""
+    assert extract_prior_context(DirectStore(_case(1))) == PriorContext()
+    assert not _prior("").has_history
 
 
 # --------------------------------------------------------------------------- #

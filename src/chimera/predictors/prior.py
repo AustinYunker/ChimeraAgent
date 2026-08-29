@@ -39,7 +39,7 @@ from chimera.contract.types import (
     Reasoning,
     RecurrencePrediction,
 )
-from chimera.evidence.reports import extract_reports
+from chimera.evidence.reports import PriorContext, extract_reports
 from chimera.evidence.structured import StructuredFeatures, extract_structured
 from chimera.mcp.client import ClinicalStore
 from chimera.models.guidelines import eau_risk
@@ -125,7 +125,12 @@ class PriorPredictor:
     # -- rationale ---------------------------------------------------------- #
 
     def free_text(
-        self, task: int, features: StructuredFeatures, decision: str, confidence: str
+        self,
+        task: int,
+        features: StructuredFeatures,
+        decision: str,
+        confidence: str,
+        prior: PriorContext | None = None,
     ) -> str:
         """A short clinical rationale, in the register the judge scores against.
 
@@ -136,10 +141,12 @@ class PriorPredictor:
 
         Takes the already-extracted features rather than the case, because
         extraction may read narrative sections and the caller is the one that
-        has to declare them.
+        has to declare them. ``prior`` is the same bargain for Task 1's history:
+        it is parsed from ``radiology_report``, so only a caller that has
+        declared that section may supply it. Omitting it is always safe.
         """
         if task == 1:
-            return biopsy_rationale(features, decision, confidence)
+            return biopsy_rationale(features, decision, confidence, prior)
         return treatment_rationale(features, decision, confidence, eau_risk(features))
 
     # -- Predictor protocol -------------------------------------------------- #

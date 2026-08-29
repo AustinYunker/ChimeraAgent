@@ -328,6 +328,86 @@ nothing on this cohort is individually significant, and CAPRA-S's own 95% CI is
 across CAPRA bands, which is the half that assumes Karolinska's csPCa model is
 calibrated like Radboudumc's. We took the calibration-free half only.
 
+### Item 8 — Task 1 rationale register ✅ *Aug 29: +0.0400 on Task 1 rationale, +0.0011 overall*
+
+Item 5 closed Task 1's *decision* as measured-out: 22 of the 24 false-yes errors sit
+in one leaf that splits 21 yes / 22 no, and nothing reachable beats that coin flip.
+The rationale is a separate 0.20 of the case score, and reading the reference
+rationales for that same leaf showed they are frequently not interpretations of the
+findings at all. **On the prior-biopsy-positive cases 24% of the references are the
+urologist naming what is *missing*** — the earlier ISUP grade, or whether the lesion
+has grown — against 4% of the never-biopsied ones. Our text answered a question they
+were not asking.
+
+Neither missing fact is reachable from the payload. Release Version 3 removed `bx`
+and the grade fields from all 195 Task 1 prompts, and Task 1 is served no pathology
+report, so the MRI report's own indication line is the only place either can appear.
+`extract_prior_context` reads it there. **This costs nothing**: `radiology_report` is
+already the Task 1 policy's single declared reveal, and `McpStore.section` memoises,
+so the second read is a cache hit — no tool call, no change to `reveal_sequence`.
+
+Three measurements were taken *before* any prose was written, and two of them
+changed it:
+
+* An explicitly stated prior-biopsy polarity agrees with the notes-derived status on
+  **28 of 28** released cases that state one, and never fires on a never-biopsied
+  case. So it may be asserted.
+* **3 of 91** reports do quote the earlier ISUP grade. The first draft said "the
+  earlier grade is not stated" unconditionally, which would have been a fabrication
+  on every one of them; the grade is parsed and cited instead.
+* **0 of 91** reports state an interval comparison — so "no comparison is reported"
+  is true on the whole released cohort, and is *still* conditioned on the text,
+  because 100 of the 250 test cases come from Karolinska templates we have not seen.
+
+`prior_care` is an OR over several phrasings, so a match establishes that some
+earlier episode exists without saying which. It gates the gap sentence and
+contributes no claim of its own.
+
+Officially scored, judge **on**, `task3-tiebreak` against `task1-prior`. Only
+`free_text` differs between the two runs — decision, confidence, `variable_weights`
+and `reveal_sequence` are identical case-for-case, and Tasks 2 and 3 are byte-identical:
+
+| Task 1 component | before | after | Δ |
+|---|---|---|---|
+| `mean_rationale_score` | 0.7369 | **0.7769** | **+0.0400** |
+| `mean_case_score` | 0.5761 | 0.5818 | +0.0057 |
+| `ranking_score` | 0.6910 | **0.6939** | **+0.0029** |
+| tool / grounding / weight-κ / gate | — | — | **unchanged** |
+
+Overall 0.7188 → **0.7199**. The case-score arithmetic checks out exactly:
+0.20 × 0.0400 × (65 graded / 91) = 0.0057.
+
+The per-case split is the reason to believe it. The **40 graded cases where the gap
+sentence does not fire scored identically** — 0 up, 0 down — which is also a clean
+determinism check on the local judge; all of the movement is on the 25 that fire,
+at +0.1040 mean. By stratum:
+
+| history the report states | n | mean Δ | up / down / same |
+|---|---|---|---|
+| **stated positive biopsy** | **13** | **+0.2231** | **9 / 0 / 4** |
+| stated negative biopsy | 4 | +0.0500 | 2 / 1 / 1 |
+| earlier PI-RADS only | 5 | −0.0400 | 0 / 2 / 3 |
+| prior-care phrase only | 3 | −0.1000 | 0 / 1 / 2 |
+
+The gain lands exactly on the stratum the reference analysis predicted, and nothing
+regressed there. **Restricting the sentence to the top two rows was considered and
+rejected**: it is a cut on n=8 against a judge that is a conservative proxy
+(Pearson +0.818 on ordering but 0.118 low on average), which is the same
+selecting-on-noise the Task 3 tie-break was scoped to avoid, and it is arguable in
+the opposite direction anyway — "no comparison with prior imaging" is most apt where
+there *is* a prior imaging study. Left as measured; a candidate A/B, not a fix.
+
+None of the four regressions is the judge objecting to the gap sentence. All four
+ask for something else: the PSA trend (`psa_trend`, which we do not reveal), the
+age, or a closer match to the reference's shape. On one the judge notes that the
+*reference* is the inaccurate one.
+
+**Route B — revealing `previous_notes` for the extra precision — remains untested and
+is priced.** Declaring a second section drops `cost_aware_tool_score` from 0.9846 to
+0.9000 and grounding does not move at all (0.6747 either way, measured: secondary
+sections in `section_variable_mapping.json` do not ground), for −0.0045 on Task 1.
+Break-even needs +0.023 on the rationale, which this change alone nearly clears.
+
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
 
