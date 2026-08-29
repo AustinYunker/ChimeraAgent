@@ -468,6 +468,13 @@ them.
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
 
+`docs/organizer-email.md` was **sent on Aug 29**. Its Q2 — whether a deterministic
+orchestrator over the MCP tools counts as an agent for this challenge — gates the
+only open question left in this milestone: whether the "LLM writer" is required at
+all, or whether it can be formally retired. Nothing here should be built until the
+answer arrives; if none does before validation opens on Sep 1, ship the
+deterministic pipeline, which passes every stated condition below.
+
 > **Pass:** full pipeline runs offline on a held-out split; declared `reveal_sequence` exactly matches observed MCP calls (assert this in a test); `mean_rationale_score` at or above baseline.
 
 ### C5 — Container + GC dry run ✅ *(target: Sep 5 — met Aug 24)*
