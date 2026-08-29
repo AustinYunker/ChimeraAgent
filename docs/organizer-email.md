@@ -1,7 +1,7 @@
 # Draft: email to the CHIMERA-agent organizers
 
 To: nadieh.khalili@radboudumc.nl
-Subject: CHIMERA-agent: questions on the MCP requirement, Task 2 reveal annotations, and two evaluator crashes
+Subject: CHIMERA-agent: questions on the MCP requirement and Task 1 grounding, plus evaluator and judge bug reports
 
 ---
 
@@ -12,9 +12,11 @@ evaluation code — having the scorer in the open has made it possible to build
 against the real contract rather than guess at it.
 
 We are preparing an entry targeting all three tasks and have a small number of
-questions from working through `evaluate.py` and the released training data. The
-first three affect architectural decisions we need to make now; the fourth is a
-bug report we think is worth acting on regardless of us.
+questions from working through `evaluate.py`, the released training data and two
+debug-phase submissions. The first three concern scoring design and an
+architectural decision we need to settle before validation opens on 1 September;
+the next two are bug reports we think are worth acting on regardless of us. If
+you have time for only one, question 2 is the one that gates our design.
 
 **1. `cost_aware_tool_score` rewards declaring no tool use at all.**
 
@@ -51,9 +53,12 @@ provided every retrieval is then genuinely executed through the official MCP
 server and the declared `reveal_sequence` reflects exactly those calls? Or is an
 LLM-driven agent loop required, with the model itself choosing each tool call?
 
-We are committed to the declared trace being truthful either way — we do not
-intend to report reveals we did not perform — but the answer determines whether
-our evidence-selection component can be a learned policy or must be a prompt.
+We are committed to the declared trace being truthful either way — our entry
+already performs every retrieval over the official MCP interface, and a test
+asserts that the emitted `reveal_sequence` is exactly the set of tools actually
+invoked. The answer determines only whether the *selection* may be a learned
+policy or must be a prompt, and since that is a substantial rebuild we would be
+grateful for a steer before the validation window opens.
 
 **3. Can `bx` ever be grounded on Task 1?**
 
@@ -62,9 +67,20 @@ clinical-data payloads contain only `radiology_report`, `previous_notes`,
 `psa_trend`, `laboratory_results` and `family_history` — there is no pathology
 section to retrieve. A submission that weights `bx` as important or decisive on
 Task 1 therefore appears to take an unavoidable `section_grounding_score`
-penalty, unless it declares a reveal it could not have performed. Is that
-intended, or should `bx` be treated as ungradable for grounding on Task 1 in the
-way `comorbidity` already is?
+penalty, unless it declares a reveal it could not have performed.
+
+This is not hypothetical for us. The reference annotations weight `bx` on Task 1,
+so matching them is worth more on `variable_weights` than the grounding penalty
+costs, and our entry weights it `important` on every Task 1 case and simply
+absorbs the loss. The alternative — declaring a `pathology_report` reveal to
+recover the grounding — would mean reporting a retrieval we did not and could not
+perform, which we are not willing to do.
+
+Is the penalty intended, or should `bx` be treated as ungradable for grounding on
+Task 1 in the way `comorbidity` already is? We note that release Version 3 also
+removed `bx`, `bx_isup`, `bx_gl_prim` and `bx_gl_sec` from all 195 Task 1
+structured prompts, so on the current release the variable is neither retrievable
+nor present on the card, yet is still gradable.
 
 **4. Two shapes make `evaluate.py` raise during aggregation, losing a whole task.**
 
@@ -87,20 +103,44 @@ than to a bad prediction. Normalising in the schema-failed branch of
 `evaluate_case`, as the success branch already does, appears sufficient. We are
 happy to open an issue or a pull request if that is useful.
 
-**5. Is the LLM rationale judge active on the leaderboard?**
+**5. Three ways the rationale judge penalises rationales that are correct.**
 
-`evaluate.py` gates `mean_rationale_score` behind `USE_RATIONALE_JUDGE`, which
-changes the case-score weights materially — 0.10 to the judge, with the five
-deterministic components renormalised down. Our debug-phase score came back
-noticeably above what we compute offline with the judge disabled, which we cannot
-fully account for from case mix alone.
+The judge is clearly active on the leaderboard — `mean_rationale_score` is
+non-null throughout the metrics dumps from both of our debug submissions — and at
+a weight of 0.20 it is tied for the largest component of a Task 1/2 case score.
+Reading its reason strings against our own outputs turned up three cases where it
+penalises a rationale that is accurate. All three are in the evidence context it
+is given rather than in the model backing it, so none looks like judge variance.
 
-Could you confirm whether the judge runs in the validation and test phases, and
-if so which model backs it? We would like our offline scoring to match the
-leaderboard's, and the answer changes how much of our effort should go to the
-free-text rationale versus the structured fields.
+- **The judge cannot see the patient card.** `evaluate.py:1354` builds the
+  evidence context from the clinical-data socket alone, so any value quoted from
+  `structured-prompt.json` is unverifiable to it. On one Task 2 case we checked
+  every value we cited against the inputs: those in the clinical data were
+  accepted, and `age` and `bx_isup` — structured-prompt fields, quoted faithfully
+  — were called unsupported. This penalises exactly the variables the task asks
+  the model to reason about, and it is self-inflicted only in the sense that we
+  could stop citing the card and write a vaguer rationale.
 
-**6. Three quick confirmations.**
+- **On Task 1 the judge attributes the reference's text to ours.** Two debug
+  cases were docked for "hallucinating" an ISUP grade, e.g. *"while the Actual
+  Output mentions 'ISUP grade group 1 (Gleason 3+3)', this specific grading is
+  not present in the provided clinical data"*. We never wrote it — the string
+  "ISUP" appears nowhere in our Task 1 output and cannot, since no Task 1 case
+  carries a grade field. It appears in the **reference** rationale for both cases
+  ("Again missing earlier ISUP grading…"). The judge appears to be reading the
+  Expected Output and attributing it to the Actual Output.
+
+- **On Task 3 the judge is given the answer and grades the prediction.**
+  `evaluate.py:1315` puts `reference_months_to_recurrence` into the judge's
+  input, and the reason strings then penalise our rationale for predicting a
+  different figure. That is the task rather than a property of the rationale, and
+  it means Task 3 rationale scores partly measure C-index error twice. (Task 3
+  ranks on the C-index alone, so this costs us nothing — we raise it because it
+  affects any entry whose reasoning trace is scored.)
+
+We would be glad to supply the case IDs and full reason strings for any of these.
+
+**6. Two quick confirmations.**
 
 - The Task 1 output socket appears to have been renamed from
   `prostate-biospy-decision` to the corrected `prostate-biopsy-decision`. The
