@@ -425,6 +425,44 @@ def test_an_unreadable_report_yields_an_empty_context():
     assert not _prior("").has_history
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Histopathology from 2019 showed Gleason 3+4 adenocarcinoma.",
+        "Known prostate cancer, referred for staging.",
+        "Status post prostatectomy; rising PSA.",
+    ],
+)
+def test_the_looser_reader_supplies_what_the_strict_patterns_miss(text):
+    """None of these name a biopsy *and* its outcome in one clause.
+
+    The strict patterns therefore abstain on all three, and the notes classifier
+    settles them -- a quoted Gleason, an established diagnosis and a completed
+    prostatectomy each require a positive specimen. This is the swap that takes
+    the stated-history count from 28 of 91 to 63.
+    """
+    assert _prior(text).biopsy_result == "positive"
+
+
+def test_a_never_biopsied_report_is_left_unstated_rather_than_asserted():
+    """``classify_prior_biopsy`` answers ``none`` here; we refuse to repeat it.
+
+    ``none`` is the classifier's *finding* that the prose contains no biopsy, and
+    it is wrong on 2 of the 91 labelled cases -- both men who had in fact been
+    biopsied. An abstention costs a sentence; asserting "no previous biopsy"
+    about them would be a fabrication, and would also arm the history-gap clause
+    via ``has_history``, since ``bool("none")`` is true.
+    """
+    prior = _prior("MRI of the prostate for elevated PSA. PI-RADS 3 lesion.")
+    assert prior.biopsy_result is None
+    assert not prior.has_history
+
+
+def test_contradictory_polarities_still_abstain():
+    """The classifier refuses to pick a side, and nothing downstream picks one."""
+    assert _prior("Previous negative biopsy. Gleason 4+3 on the 2020 cores.").biopsy_result is None
+
+
 # --------------------------------------------------------------------------- #
 # Task 3: the csPCa tie-break
 #

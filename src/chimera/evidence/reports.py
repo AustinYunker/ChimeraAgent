@@ -33,6 +33,7 @@ import re
 from dataclasses import dataclass, fields
 from typing import Any
 
+from chimera.evidence.notes import classify_prior_biopsy
 from chimera.mcp.client import ClinicalStore
 
 #: Nodal status when the pelvic nodes were never sampled (pNx).
@@ -207,6 +208,11 @@ _PRIOR_BIOPSY_RESULT = (
     r"|(positive|negative) (?:prior|previous|earlier) biops"
 )
 
+#: The only two answers :func:`extract_prior_context` will take from the notes
+#: classifier. It also returns ``none`` -- a positive finding that the prose
+#: describes a work-up containing no biopsy -- which is refused there.
+_STATED_POLARITIES = frozenset({"positive", "negative"})
+
 #: An ISUP grade group from a *previous* histopathology, as quoted by the MRI
 #: report. A graded biopsy is a positive one, so this also settles the polarity.
 _PRIOR_GRADE = r"ISUP\s*(?:grade\s*group\s*|GG\s*)?(\d)\b"
@@ -251,9 +257,12 @@ class PriorContext:
     reveals, so this costs no tool call and does not touch ``reveal_sequence``.
     """
 
-    #: ``positive`` / ``negative``, only where the report states it outright.
-    #: Agrees with the notes-derived status on 26 of 26 released cases that state
-    #: it, and never fires on a never-biopsied one.
+    #: ``positive`` / ``negative``, where the report states it outright. Filled
+    #: first by this module's strict patterns and then, where those abstain, by
+    #: :func:`chimera.evidence.notes.classify_prior_biopsy` reading the same
+    #: section -- see :func:`extract_prior_context` for why the looser reader is
+    #: the safe one here. Never ``none``: this field's job is to name a history,
+    #: and the absence of one is not something to assert.
     biopsy_result: str | None = None
     #: ISUP grade group of the earlier biopsy. Stated in 3 of 91 cases.
     prior_grade: int | None = None
@@ -277,13 +286,46 @@ class PriorContext:
 
 
 def extract_prior_context(store: ClinicalStore) -> PriorContext:
-    """Read the Task 1 history out of the MRI report. Never raises."""
+    """Read the Task 1 history out of the MRI report. Never raises.
+
+    The prior-biopsy polarity has two readers, tried strictest first. This
+    module's own patterns want the report to name the biopsy and its outcome in
+    one clause, which is unambiguous but rare -- 28 of the 91 labelled cases.
+    :mod:`chimera.evidence.notes` accepts the many other ways a report says the
+    same thing, chiefly a quoted Gleason score or ISUP grade, neither of which
+    exists without a positive specimen.
+
+    Handing this field to the looser reader is a measurement, not a relaxation.
+    Scored over all 91 labelled Task 1 cases against the Version 2 patient card,
+    which still carried ``bx``, ``classify_prior_biopsy`` on ``radiology_report``
+    alone is right 87 times and **never states the wrong polarity**; its four
+    misses all under-call. Restricted to the cases where it answers ``positive``
+    or ``negative`` -- the only two this function accepts from it -- it is 63 for
+    63. So the swap converts 35 abstentions into stated history and introduces no
+    claim the report does not support.
+
+    ``none`` is refused on purpose. Two of the four misses are under-calls *to*
+    ``none``, and unlike an abstention that is an assertion: it would tell the
+    judge a man with a positive prior biopsy had never been biopsied. It would
+    also arm :attr:`PriorContext.has_history`, since ``bool("none")`` is true,
+    and so put "no comparison with prior imaging is reported" on never-biopsied
+    men who have no prior imaging to compare against.
+
+    Both readers see only ``radiology_report``, which the Task 1 policy already
+    declares, so nothing here costs a tool call or changes ``reveal_sequence``.
+    Adding ``previous_notes`` would carry the classifier to 91 of 91, but it buys
+    4 further cases for a measured -0.0045 on Task 1 through tool precision, so
+    it is deliberately not read. See ``docs/plan.md``.
+    """
     text = _text(store, "radiology_report")
     if not text:
         return PriorContext()
 
     match = _search(text, _PRIOR_BIOPSY_RESULT)
     result = next((g.lower() for g in match.groups() if g), None) if match else None
+    if result is None:
+        classified = classify_prior_biopsy(text)
+        result = classified if classified in _STATED_POLARITIES else None
 
     grade_match = _search(text, _PRIOR_GRADE)
     grade = int(grade_match.group(1)) if grade_match else None

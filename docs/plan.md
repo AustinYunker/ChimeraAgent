@@ -402,11 +402,68 @@ ask for something else: the PSA trend (`psa_trend`, which we do not reveal), the
 age, or a closer match to the reference's shape. On one the judge notes that the
 *reference* is the inaccurate one.
 
-**Route B — revealing `previous_notes` for the extra precision — remains untested and
-is priced.** Declaring a second section drops `cost_aware_tool_score` from 0.9846 to
-0.9000 and grounding does not move at all (0.6747 either way, measured: secondary
-sections in `section_variable_mapping.json` do not ground), for −0.0045 on Task 1.
-Break-even needs +0.023 on the rationale, which this change alone nearly clears.
+### Item 9 — the looser reader on the section we already declare ✅ *Aug 29: +0.0292 on Task 1 rationale, +0.0008 overall*
+
+Route B was going to reveal `previous_notes` to state prior-biopsy status on more
+Task 1 cases. Measuring what it would actually add killed it, and pointed at a
+free alternative that does nearly all of the same work.
+
+Item 8 filled `PriorContext.biopsy_result` from this module's own strict patterns,
+which want the biopsy and its outcome named in one clause. That is rare — 28 of the
+91 labelled cases. `chimera.evidence.notes.classify_prior_biopsy` accepts the many
+other ways a report says the same thing (a quoted Gleason or ISUP grade, an
+established diagnosis, a completed prostatectomy). Reading it over the **same**
+`radiology_report` reaches 63. Adding `previous_notes` on top reaches 67.
+
+| prior-biopsy status stated, of 91 | reader |
+|---|---|
+| 28 | Item 8's strict patterns, `radiology_report` |
+| **63** | `classify_prior_biopsy`, `radiology_report` — *no reveal change* |
+| 67 | + `previous_notes` — **this is all Route B buys: 4 cases** |
+
+So Route B's marginal contribution is 4 cases against its −0.0045 tool-precision
+cost, worth roughly +0.0005 at Item 8's measured rate: a **net loss near −0.0040,
+argued from 4 cases.** Rejected on measurement rather than run; the judged cycle was
+spent on the free variant instead.
+
+**The swap is justified against the Version 2 answer key, not against intuition.**
+V2 still carried `bx`, so the classifier can be scored over all 91 labelled cases:
+
+| reader | accuracy | wrong polarity | abstains |
+|---|---|---|---|
+| strict patterns (Item 8) | 28/91 | 0 | 63 |
+| `classify_prior_biopsy`, report alone | 87/91 | **0** | 2 |
+| + `previous_notes` | 91/91 | 0 | 0 |
+
+Report-alone never states the wrong polarity; all four misses under-call. Restricted
+to `positive`/`negative` — the only two answers `extract_prior_context` accepts from
+it — it is **63 for 63**. `none` is refused: two of the four misses under-call *to*
+`none`, which unlike an abstention is an assertion that a man who was biopsied never
+was, and `bool("none")` is true, so it would also arm the history-gap clause on
+never-biopsied men who have no prior imaging to compare against. Both refusals are
+pinned by tests.
+
+Official evaluator, judge on, `task1-prior` → `task1-notes`, `free_text` the only key
+that differs (81 of 195 Task 1 cases; Tasks 2 and 3 byte-identical):
+
+| Task 1 | before | after | Δ |
+|---|---|---|---|
+| `mean_rationale_score` | 0.776923 | **0.806154** | **+0.029231** |
+| `mean_case_score` | 0.581814 | 0.585989 | +0.004176 |
+| `ranking_score` | 0.693892 | **0.695980** | **+0.002088** |
+| `mean_tool_score` | 0.984615 | 0.984615 | — |
+| `mean_section_grounding_score` | 0.674725 | 0.674725 | — |
+| `variable_weight_weighted_kappa` | 0.604512 | 0.604512 | — |
+
+Overall 0.719905 → **0.720740**. Per case: 8 up, 4 down, 53 unchanged; among the 12
+that moved, mean +0.1583, worst −0.100, best +0.500.
+
+**A repetitiveness concern was raised and does not survive the diagnostic.** The gap
+clause now fires on 147 of 195 Task 1 cases and 102 of them close with the identical
+joint sentence. But all 195 rationales are distinct, and the judge scores each case
+independently against its own reference — there is no mechanism by which corpus-level
+sameness is penalised. The live question is aptness on those 102, not sameness across
+them.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
