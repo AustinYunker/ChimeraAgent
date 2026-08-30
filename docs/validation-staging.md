@@ -44,16 +44,42 @@ Everything below follows from that list.
 
 ## Pre-flight — Aug 30–31, before a single slot is spent
 
-**Nothing since `v0.2.1` (Aug 24) has been through a container.** Items 8 and 9 are
-source changes to `evidence/reports.py` and `predictors/rationale.py` that have only
-ever run natively. Three things must happen before Sep 1, all free:
+**The last *built* tag is `v0.3.0` (Aug 26), and the last *submitted* image is
+`v0.2.1` (Aug 24).** Eleven commits sit on top of `v0.3.0`, and they are not
+cosmetic: the entire MCP subsystem — `client.py`, `protocol.py`, `server.py`,
+`tools.py`, about 950 lines — postdates it, along with `inference.py`'s rewrite to
+reach evidence through the server instead of reading the case directly. **None of it
+has ever run inside a container.** Items 8 and 9 are the small part of this.
 
-- **P1. Build the image from current HEAD** (`dc4c9b1`) in GitHub Actions and pull the
-  tarball. Bump `pyproject.toml` / `__init__.py` off `0.1.0`, which no longer
-  identifies anything.
-- **P2. Debug-submit it.** Confirms the container runs, the sockets are right, and
-  nothing in Items 8–9 crashes the evaluator. If this fails, it fails on Aug 31 for
-  free rather than on Sep 1 for a fifth of the budget.
+The MCP layer adds no runtime dependency (it is hand-rolled stdlib precisely so the
+SDK's pydantic/anyio/httpx tree stays out of the image; `mcp>=1.0` is a test-only
+dep and the image installs `--no-deps`), so the risk is not the build. It is the
+stdio subprocess: `McpSession.for_input` spawns `python -m chimera.mcp.server` as a
+non-root user against a read-only `/input`, with `/tmp` a separate volume, and that
+combination has never been exercised.
+
+- **P0. Make a silent MCP failure fail the build.** *(done — `scripts/smoke_test_image.sh`)*
+  `inference.py::open_store` degrades to an in-process `DirectStore` when the
+  transport fails. That is the right runtime behaviour — a crashed case is scored
+  against a sentinel label and costs the true class its recall, so a lost subprocess
+  must cost provenance rather than a case — but it is **invisible in the outputs**.
+  `check_outputs` passes either way, because a `DirectStore` prediction is perfectly
+  well-formed. Without an assertion, CI would go green on an image that never speaks
+  MCP, and we would submit it while asking the organizers whether our MCP
+  orchestration is compliant. The smoke test now captures each container's log and
+  fails if any case shows `falling back` / `retrying with a direct read`, or omits
+  the `mcp server` handshake line.
+- **P1. Tag `v0.4.0` and build.** The version string sat at `0.1.0` through four
+  tags; it is now bumped and **logged by `inference.py` on startup**, because the
+  platform names a submission by upload rather than by content and a debug result
+  that cannot be tied to a commit is not evidence of anything.
+- **P2. Debug-submit it.** Three questions, in order of what would hurt most:
+  1. **Does the MCP subprocess survive the platform's sandbox?** The `mcp server`
+     line in the returned logs is the whole answer. If it is absent, every case
+     silently ran on `DirectStore` and the architecture question moves from
+     "compliant?" to "not implemented".
+  2. Does the container still run clean — sockets, exit codes, wall clock?
+  3. What does the platform judge score the new rationale?
 - **P3. Re-run the judge calibration against P2's returned scores**, paired, exactly
   as `a4a7f02` did.
 

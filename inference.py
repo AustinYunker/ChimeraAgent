@@ -28,6 +28,7 @@ import os
 import sys
 from pathlib import Path
 
+from chimera import __version__
 from chimera.contract.io import CaseInputs, read_case, socket_paths, write_case_outputs
 from chimera.contract.io import detect_task
 from chimera.contract.types import Prediction
@@ -47,6 +48,11 @@ def log_environment() -> None:
     The first validation submission exists to learn about the runtime, and the
     container logs are the only channel through which it can tell us anything.
     """
+    # Which artefact actually ran. The platform names a submission by upload,
+    # not by what is inside it, so without this line a debug result cannot be
+    # tied back to a commit -- and tying results to commits is the entire point
+    # of the debug phase (see docs/validation-staging.md).
+    log.info("chimera          : %s", __version__)
     log.info("python           : %s", sys.version.split()[0])
     log.info("input            : %s (exists=%s)", INPUT_PATH, INPUT_PATH.is_dir())
     log.info("output           : %s (exists=%s)", OUTPUT_PATH, OUTPUT_PATH.is_dir())

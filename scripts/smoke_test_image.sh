@@ -30,6 +30,12 @@ rm -rf "${OUTPUT}"
 mkdir -p "${OUTPUT}"
 OUTPUT="$(cd "${OUTPUT}" && pwd)"
 
+# Per-case container logs, kept so the MCP assertion below can read them. They
+# are the only channel the platform gives us either, so what is asserted here is
+# exactly what we will be able to check in a debug submission's logs.
+LOG_DIR="${OUTPUT}/_logs"
+mkdir -p "${LOG_DIR}"
+
 # The model mount is empty for C1b -- no weights ship yet -- but the directory
 # must exist so the bind mount resolves, and its presence is what the entrypoint
 # reports back in the logs.
@@ -61,7 +67,7 @@ while IFS= read -r inputs_file; do
     --volume "${out_dir}":/output \
     --volume "${NOOP_VOLUME}":/tmp \
     --volume "${MODEL_DIR}":/opt/ml/model:ro \
-    "${IMAGE}"
+    "${IMAGE}" 2>&1 | tee "${LOG_DIR}/$(echo "${rel}" | tr / _).log"
   n=$((n + 1))
 done < <(find "${CASES}" -name inputs.json | sort)
 
@@ -74,5 +80,31 @@ fi
 cleanup
 trap - EXIT
 
-echo "=+= ran ${n} case(s); validating result sockets"
+# Every case must have reached its evidence over MCP. `inference.py` degrades to
+# an in-process read when the stdio transport fails, which keeps a case worth
+# scoring but makes the entry's central claim -- that tool access goes through
+# the official MCP interface -- false in the shipped artefact. That degradation
+# is invisible in the outputs: `check_outputs` passes either way, because a
+# DirectStore prediction is a perfectly well-formed one. The logs are the only
+# place it shows, so the build fails on them rather than on the sockets.
+echo "=+= ran ${n} case(s); asserting every case went through MCP"
+degraded=0
+for log_file in "${LOG_DIR}"/*.log; do
+  case_name="$(basename "${log_file}" .log)"
+  if grep -qE "falling back|retrying with a direct read" "${log_file}"; then
+    echo "=+= ${case_name}: DEGRADED -- took a non-MCP path" >&2
+    grep -nE "falling back|retrying with a direct read" "${log_file}" >&2
+    degraded=1
+  elif ! grep -q "mcp server" "${log_file}"; then
+    echo "=+= ${case_name}: no 'mcp server' line -- the handshake never happened" >&2
+    degraded=1
+  fi
+done
+if [ "${degraded}" -ne 0 ]; then
+  echo "=+= at least one case did not use MCP; see the logs above" >&2
+  exit 1
+fi
+echo "=+= all ${n} case(s) handshook with the MCP server"
+
+echo "=+= validating result sockets"
 python -m chimera.cli.check_outputs --cases "${CASES}" --outputs "${OUTPUT}"
