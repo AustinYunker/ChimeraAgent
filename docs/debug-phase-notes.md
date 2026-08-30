@@ -565,3 +565,107 @@ and the debug cases are drawn from the same training data, so this is not new ev
 Aug 26 and Aug 30: the weight vector now cites variables the revealed section cannot
 ground. `section_grounding_score` did not move, so nothing is being paid for it today.
 Separate thread.
+
+## Fourth debug submission (v0.4.1, Aug 30) — `metrics_august_30_part2.json`
+
+One variable: Item 10, which stops calling a cancer history a biopsy. 27 of 195 Task 1
+cases change `free_text` and nothing else; one of them, `PT-pseudo_0020cfca66c8`, is in
+the debug set.
+
+### The result: nothing moved, and that is the finding
+
+Every numeric field on all 12 cases is identical to v0.4.0 — to full float precision,
+including `overall_ranking_score` 0.8362134740259741. **Eleven of the twelve judge reason
+strings are byte-identical.** The one that differs is `0020cfca66c8`: the only case whose
+text we changed.
+
+That is a tighter provenance proof than the version line in the log — the platform's own
+output identifies exactly which case we edited. And it means an unchanged artefact
+re-scores identically, so re-submitting a frozen build costs a slot and buys nothing.
+
+**It does not establish that the judge is deterministic.** Unchanged outputs may simply
+be cached rather than re-judged, and the two are indistinguishable from here. The judge's
+noise on *changed* text — the number that would tell us how large a platform delta has to
+be before it means anything — is still unmeasured, and this run could not measure it.
+
+### The reword bought zero, and the judge's reasons say why
+
+`0020cfca66c8` scored `rationale_score` **0.7** before and **0.7** after. Its full text
+under v0.4.1 is:
+
+> MRI PI-RADS 2, unlikely to harbour clinically significant disease, PSA 4.7 ng/mL
+> (density 0.14) and a previously diagnosed prostate cancer. Prostate biopsy is not
+> indicated at present. No comparison with prior imaging is reported.
+
+The new reason:
+
+> the rationale ... introduces clinical grading (ISUP grade group 1, Gleason 3+3) and
+> **mentions a previous biopsy positive for cancer**, which are not explicitly supported
+
+The string "ISUP" does not occur anywhere in that text. Neither does "a previous biopsy
+positive for cancer" — it is the exact phrase Item 10 removed. The judge charges us with
+both, at the same score, one submission after we deleted them.
+
+**This is the controlled version of the Aug 26 argument.** That one was archaeology: the
+same complaint appeared when our text happened to contain no "ISUP". This one is an
+experiment — we removed the two strings and held everything else fixed, and the complaint
+did not move. Item 8's gap clause was rightly kept, and this class of complaint is not
+reachable by editing our prose. Stop trying.
+
+### Where the phantom ISUP comes from: the same patient's Task 2 card
+
+`PT-pseudo_0020cfca66c8` and `T2-001` are **the same patient**:
+
+| | `PT-pseudo_0020cfca66c8` (task 1) | `T2-001` (task 2) |
+|---|---|---|
+| age / psa / psad / pirads | 67 / 4.7 / 0.14 / 2 | 67 / 4.7 / 0.14 / 2 |
+| `cspca` | 0.59620297 | 0.59620297 |
+| `enc_type` | Re-evaluation - prior PCa diagnosis | *(same)* |
+| `bx_isup`, `bx_gl_prim`, `bx_gl_sec` | **absent** | **1, 3, 3** |
+
+`T2-001`'s card spells "ISUP grade group 1 (Gleason 3+3)" exactly, it is the **only**
+occurrence of that grade anywhere in the 12-case batch, and the Task 1 card carries no
+grade fields at all. The judge is attributing one case's record to another case's output
+within the same submission. 19 of 195 Task 1 cases have such a sibling.
+
+So there are two distinct contamination sources now traced, not one: the *reference
+rationale* (Aug 26, `0cdf` and `2e03`, which ask for "initial ISUP") and the *sibling
+case card* (`0020`). Both are worth reporting to the organizers with these case IDs.
+
+### Item 10's standing after the experiment
+
+Score-neutral on the platform, and known to be so. It stays because we were asserting a
+procedure the source does not describe, which is wrong whether or not a judge notices.
+The honest ledger entry is: the change was correct, the hypothesis that it would recover
+`0020`'s Aug 26 score of 1.0 was wrong, and the 0.3 that case lost between Aug 26 and
+Aug 30 is still unexplained by anything in our text.
+
+### Task 1's ranking score, decomposed
+
+`ranking_score = (mean_case_score + task_f1) / 2` — `evaluate.py:1790`.
+**`confidence_weighted_kappa` is reported but never ranked**, which confirms Item 6's
+closure: a constant scoring 0.0 on it costs nothing.
+
+Per-case loss across the three gate-passed Task 1 cases:
+
+| component | mean | weight | points lost |
+|---|---|---|---|
+| `confidence` | 0.3333 | 0.20 | **0.1333** |
+| `rationale` | 0.5333 | 0.20 | **0.0933** |
+| `factor_f1` | 0.7579 | 0.15 | 0.0363 |
+| `var_weight` | 0.8556 | 0.25 | 0.0361 |
+| `section_grounding` | 0.6825 | 0.05 | 0.0159 |
+| `tool` | 1.0000 | 0.15 | 0.0000 |
+
+And the counterfactuals on `ranking_score`, currently **0.6569**:
+
+| if | ranking | Δ |
+|---|---|---|
+| the gate failure on `1dc32184cab6` were decided right | 0.8425 | **+0.1856** |
+| confidence were right on the two `uncertain` cases | 0.7069 | +0.0500 |
+| every rationale complaint were answered perfectly | 0.6919 | +0.0350 |
+
+**The decision model is worth five times every rationale complaint combined**, because a
+gate failure zeroes the case *and* halves the `no` recall that feeds `task_f1`. The judge
+is the loudest signal in the file and the smallest one. n=4, so this is a direction and
+not a measurement — but it is the same direction Item 6 found at n=91.

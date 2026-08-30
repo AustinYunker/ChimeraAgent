@@ -171,8 +171,16 @@ whichever change we already felt like making:
 | gate-pass rate down | Task 1 decision widened toward the majority class in the ambiguous high-PI-RADS/prior-positive leaf — that leaf holds 22 of 24 false-yes errors and splits 21/22, so off-training it is the only place the gate can be bleeding |
 | tool or grounding down | a reveal-policy change. **This is the one place Route B comes back**: it was rejected at −0.0045 on *training* reference sets, and validation is the only instrument that can price it against real ones |
 | weight-κ down | a flatter, less annotator-specific weight vector |
-| rationale down beyond the offset | revert Items 8–9's gap clause, which is the newest and least-tested text |
+| rationale down beyond the offset | ~~revert Items 8–9's gap clause, which is the newest and least-tested text~~ **struck Aug 30 — do not spend a slot here.** The v0.4.1 run deleted the two exact strings the judge complains about and the complaint came back verbatim at an unchanged score. Both phantoms are traced (a reference rationale, and the *same patient's* Task 2 card leaking into a Task 1 judgement). A rationale gap is therefore not evidence that our text is wrong, and no edit to it is a testable response. If rationale gaps, read it and bank the slot |
 | nothing gaps | **do not probe.** Go straight to the dress rehearsal and bank the remaining slots |
+
+**Aug 30 sharpens the priority order.** On the four debug Task 1 cases, the counterfactual
+lifts on `ranking_score` (0.6569 today) are: fixing the single gate failure **+0.1856**,
+fixing confidence on the two `uncertain` cases **+0.0500**, answering *every* rationale
+complaint perfectly **+0.0350**. A gate failure zeroes the case and halves the `no` recall
+feeding `task_f1`, so it is charged twice. n=4 makes that a direction, not a measurement —
+but it is the same direction Item 6 found at n=91, and it says row 1 of this table is the
+one to be ready for.
 
 That last row is the important one. With an unknown cohort size and a one-shot test,
 chasing a sub-point difference on unseen data is the same selecting-on-noise the Task 3

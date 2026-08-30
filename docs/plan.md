@@ -501,6 +501,14 @@ same run 2 *unchanged* cases moved on judge nondeterminism alone (0.7→0.6, 0.9
 the noise floor is the same size as the signal. The justification is that we were
 asserting a procedure the source does not state; the number is not evidence either way.
 
+**Debug-confirmed Aug 30 (v0.4.1): score-neutral, and correct anyway.** Re-submitted with
+Item 10 as the only variable. `0020cfca66c8` scored `rationale_score` 0.7 before and 0.7
+after, and the judge repeated *both* complaints — the ISUP grading and "mentions a
+previous biopsy positive for cancer" — against a text that now contains neither string.
+The change stands on the reason it was made; the expectation that it would recover the
+case's Aug 26 score of 1.0 was wrong, and that 0.3 remains unexplained by anything in our
+text. Full read in `docs/debug-phase-notes.md`.
+
 **The ISUP hallucination flag is not ours and was not fixed here.** Three of three
 gate-passed Task 1 cases were docked for "hallucinating" an `ISUP grade group 1 (Gleason
 3+3)` that appears in neither our output nor the case. Item 8's gap clause, which names
@@ -510,6 +518,14 @@ text contained no "ISUP" at all.** The string comes out of the reference rationa
 judge attributes it to us — the attribution defect already recorded in
 `docs/debug-phase-notes.md`. Both cases carrying the clause scored *higher* with it than
 without (0.4→0.5, 0.3→0.4), so it stays. Withdrawing it was drafted and reverted.
+
+The v0.4.1 run turned that archaeology into an experiment. `0020cfca66c8`'s text now
+contains no "ISUP" at all, and the judge still charges it with `ISUP grade group 1
+(Gleason 3+3)` at an unchanged score. The string is traceable: `0020cfca66c8` and `T2-001`
+are the **same patient** — age 67, PSA 4.7, PSAD 0.14, PI-RADS 2, `cspca` 0.59620297 to
+eight decimals — and `T2-001`'s card carries `bx_isup 1, bx_gl_prim 3, bx_gl_sec 3`, the
+only occurrence of that grade in the whole 12-case batch. One case's record is being
+attributed to another case's output within a single submission.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
