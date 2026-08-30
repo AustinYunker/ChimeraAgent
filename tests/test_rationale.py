@@ -163,7 +163,7 @@ def test_an_empty_case_still_yields_a_decision_sentence():
 # so. The two tests that matter are the ones guarding against saying it when it
 # is false: measurement found counterexamples to both halves of the first draft.
 
-_POSITIVE = PriorContext(biopsy_result="positive", prior_care=True)
+_POSITIVE = PriorContext(biopsy_result="positive", states_biopsy=True, prior_care=True)
 
 
 def test_a_never_biopsied_case_is_unchanged():
@@ -177,10 +177,12 @@ def test_a_never_biopsied_case_is_unchanged():
 
 def test_a_stated_prior_grade_is_cited_rather_than_denied():
     """The near-miss this test exists for: 3 of the 91 released Task 1 reports
-    *do* quote the earlier ISUP grade. An unconditional "the grade is not
-    reported" would have been a fabrication on every one of them."""
+    *do* quote the earlier ISUP grade, and a quoted grade is a quoted
+    histopathology result, so it licenses the word *biopsy* on its own."""
     features = StructuredFeatures(pirads=5, psa=7.0, psad=0.427)
-    prior = PriorContext(biopsy_result="positive", prior_grade=2, prior_care=True)
+    prior = PriorContext(
+        biopsy_result="positive", states_biopsy=True, prior_grade=2, prior_care=True
+    )
     text = biopsy_rationale(features, "yes", "clear", prior)
     assert "previous biopsy positive for cancer (ISUP grade group 2)" in text
     assert "ISUP grade is not reported" not in text
@@ -193,7 +195,9 @@ def test_a_reported_comparison_is_not_called_missing():
     100 of the 250 test cases come from Karolinska, whose templates we have never
     seen. The claim is conditioned on the text rather than on that count."""
     features = StructuredFeatures(pirads=5, psa=9.3, psad=0.516)
-    prior = PriorContext(biopsy_result="positive", prior_care=True, states_comparison=True)
+    prior = PriorContext(
+        biopsy_result="positive", states_biopsy=True, prior_care=True, states_comparison=True
+    )
     text = biopsy_rationale(features, "yes", "clear", prior)
     assert "comparison with prior imaging" not in text
     assert text.rstrip().endswith("The earlier biopsy's ISUP grade is not reported.")
@@ -203,7 +207,7 @@ def test_a_negative_prior_biopsy_has_no_grade_to_be_missing():
     """An ungraded negative biopsy is not an omission -- there was nothing to
     grade. Only the imaging comparison is genuinely absent."""
     features = StructuredFeatures(pirads=3, psa=6.0, psad=0.13)
-    prior = PriorContext(biopsy_result="negative", prior_care=True)
+    prior = PriorContext(biopsy_result="negative", states_biopsy=True, prior_care=True)
     text = biopsy_rationale(features, "no", "clear", prior)
     assert "previous negative biopsy" in text
     assert "ISUP" not in text
@@ -219,6 +223,33 @@ def test_both_gaps_read_as_one_sentence():
     )
     # The awkward machine-made form the joint phrasing exists to avoid.
     assert "is not reported" not in text
+
+
+def test_a_cancer_history_has_no_biopsy_grade_to_be_missing():
+    """The gap sentence follows the history sentence, so it has to make the same
+    distinction. Having just declined to call the history a biopsy, naming "the
+    earlier biopsy's ISUP grade" as the missing fact would put the procedure back
+    in the rationale through the back door."""
+    features = StructuredFeatures(pirads=2, psa=4.7, psad=0.14)
+    prior = PriorContext(biopsy_result="positive", states_biopsy=False, prior_care=True)
+    text = biopsy_rationale(features, "no", "clear", prior)
+    assert "ISUP" not in text
+    assert text.rstrip().endswith("No comparison with prior imaging is reported.")
+
+
+def test_a_cancer_history_is_not_upgraded_to_a_biopsy():
+    """The report says a cancer was diagnosed, not that a biopsy found it. The
+    polarity is right either way -- ``classify_prior_biopsy`` is 63/63 on stated
+    polarities -- but asserting the specimen is a claim the section does not
+    carry, and the debug judge called it on exactly this case."""
+    features = StructuredFeatures(pirads=2, psa=4.7, psad=0.14)
+    prior = PriorContext(biopsy_result="positive", states_biopsy=False, prior_care=True)
+    text = biopsy_rationale(features, "no", "clear", prior)
+    assert "a previously diagnosed prostate cancer" in text
+    assert "biopsy positive for cancer" not in text
+    # The decision sentence still says "biopsy" -- that is the recommendation,
+    # not a claim about the history.
+    assert "Prostate biopsy is not indicated at present." in text
 
 
 def test_naming_a_gap_never_softens_the_decision():

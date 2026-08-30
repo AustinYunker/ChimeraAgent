@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, fields
 from typing import Any
 
-from chimera.evidence.notes import classify_prior_biopsy
+from chimera.evidence.notes import classify_prior_biopsy, mentions_biopsy
 from chimera.mcp.client import ClinicalStore
 
 #: Nodal status when the pelvic nodes were never sampled (pNx).
@@ -264,6 +264,16 @@ class PriorContext:
     #: the safe one here. Never ``none``: this field's job is to name a history,
     #: and the absence of one is not something to assert.
     biopsy_result: str | None = None
+    #: Does the report name a biopsy, or only a cancer history? The looser
+    #: reader answers ``positive`` from "re-evaluation of prior prostate cancer
+    #: diagnosis" as readily as from "previously positive biopsy", and the
+    #: polarity is right both times -- but only the second licenses the word
+    #: *biopsy* in the rationale. The Aug 30 debug run is the evidence: the
+    #: platform judge accepted "a previous biopsy positive for cancer" on the two
+    #: cases whose report says "previously positive biopsy" and called it an
+    #: unsupported claim on the one whose report says only "prior prostate cancer
+    #: diagnosis". Consumed by the rationale, never by the decision.
+    states_biopsy: bool = False
     #: ISUP grade group of the earlier biopsy. Stated in 3 of 91 cases.
     prior_grade: int | None = None
     #: PI-RADS attributed to an earlier study. Present on 5 never-biopsied cases,
@@ -343,6 +353,9 @@ def extract_prior_context(store: ClinicalStore) -> PriorContext:
 
     return PriorContext(
         biopsy_result=result,
+        # A quoted grade is a quoted histopathology result, so it names a biopsy
+        # as surely as the word does.
+        states_biopsy=mentions_biopsy(text) or grade is not None,
         prior_grade=grade,
         prior_pirads=prior_pirads,
         prior_care=bool(_search(text, _PRIOR_CARE)),

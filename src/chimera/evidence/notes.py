@@ -117,6 +117,19 @@ _MENTIONED = re.compile(
 )
 
 
+def mentions_biopsy(text: str) -> bool:
+    """Does ``text`` name a biopsy at all?
+
+    :func:`classify_prior_biopsy` answers ``positive`` from cancer-history
+    phrasings that never say "biopsy" -- "known prostate cancer", "status post
+    prostatectomy". The polarity it returns is right either way, but the *claim
+    shape* is not: a caller that renders every ``positive`` as "a previous
+    biopsy positive for cancer" asserts a procedure the source never mentioned.
+    This is the test that separates the two, so the prose can track its source.
+    """
+    return bool(text) and bool(_MENTIONED.search(text))
+
+
 def classify_prior_biopsy(text: str) -> str | None:
     """``positive`` / ``negative`` / ``none``, or ``None`` when the text is unclear.
 

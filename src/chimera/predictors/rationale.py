@@ -133,6 +133,13 @@ _PRIOR_BIOPSY_PHRASE = {
     "none": "no previous biopsy",
 }
 
+#: What a stated ``positive`` polarity is called when the report never says
+#: *biopsy* -- "re-evaluation of prior prostate cancer diagnosis", "known
+#: prostate cancer", "status post prostatectomy". The history is real and the
+#: polarity is right; the procedure is the part that was not stated, so the
+#: prose names the diagnosis instead of inventing the specimen that found it.
+_PRIOR_CANCER_PHRASE = "a previously diagnosed prostate cancer"
+
 
 def _num(value: float | int | None) -> str:
     """Render without a trailing ``.0``, so ``9.0`` prints the way reports do."""
@@ -223,10 +230,18 @@ def _reported_history_clause(prior: PriorContext) -> str:
     us which, and naming one would be a guess. It gates
     :func:`_history_gap_clause` instead, where it is used to establish that there
     is a history to be silent about rather than to assert what the history was.
+
+    "Corroborable by construction" is a claim about the *whole* sentence, not
+    just its polarity, which is why a positive history splits on
+    :attr:`PriorContext.states_biopsy`. Where the report names a biopsy the
+    biopsy is named back; where it names only a cancer history, so does this.
+    The Aug 30 debug judge drew exactly that line -- see the field's docstring.
     """
     clauses: list[str] = []
     if prior.biopsy_result:
         clause = _PRIOR_BIOPSY_PHRASE.get(prior.biopsy_result, "")
+        if prior.biopsy_result == "positive" and not prior.states_biopsy:
+            clause = _PRIOR_CANCER_PHRASE
         if clause and prior.prior_grade is not None:
             clause += f" (ISUP grade group {prior.prior_grade})"
         clauses.append(clause)
@@ -259,6 +274,19 @@ def _history_gap_clause(prior: PriorContext) -> str:
     earlier ISUP grade, and the Karolinska templates -- 100 of the 250 test cases
     -- are unseen, so an unconditional "no comparison is reported" would be the
     same fabrication this module exists to avoid.
+
+    **Kept on Aug 30, after being provisionally withdrawn.** The Aug 30 debug run
+    scored 3 of 3 gate-passed Task 1 cases for "hallucinating" an ``ISUP grade
+    group 1 (Gleason 3+3)`` that is in neither our text nor the case, and this
+    clause -- which names the ISUP grade in order to say it is absent -- was the
+    obvious suspect. It is not the cause. The **Aug 26** run raised the identical
+    complaint, verbatim, on two of the same cases at a time when our Task 1 text
+    contained no "ISUP" at all; the string comes out of the *reference* rationale
+    ("Again missing earlier ISUP grading", "Need to know initial ISUP") and is a
+    judge attribution defect already recorded in ``docs/debug-phase-notes.md``.
+    Both cases that carry this clause in fact scored **higher** on Aug 30 than
+    without it (0.4 to 0.5, 0.3 to 0.4). Removing it would have been a change
+    made against the evidence rather than on it.
     """
     # Each gap carries both its own sentence and the noun phrase it contributes
     # to the joint one, because "Any comparison with prior imaging is not
@@ -267,7 +295,9 @@ def _history_gap_clause(prior: PriorContext) -> str:
     missing: list[tuple[str, str]] = []
     # Only where a positive biopsy is on the record: an ungraded *negative*
     # biopsy has no grade to be missing, and a never-biopsied man has no biopsy.
-    if prior.biopsy_result == "positive" and prior.prior_grade is None:
+    # A cancer history the report never calls a biopsy is not one either -- see
+    # PriorContext.states_biopsy.
+    if prior.biopsy_result == "positive" and prior.states_biopsy and prior.prior_grade is None:
         missing.append((
             "The earlier biopsy's ISUP grade is not reported.",
             "the earlier biopsy's ISUP grade",

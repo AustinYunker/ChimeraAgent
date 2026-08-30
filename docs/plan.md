@@ -465,6 +465,52 @@ independently against its own reference — there is no mechanism by which corpu
 sameness is penalised. The live question is aptness on those 102, not sameness across
 them.
 
+### Item 10 — the rationale tracks its source, not just its polarity ✅ *Aug 30: correctness, not score*
+
+Item 9 handed the prior-biopsy polarity to `classify_prior_biopsy`, validated at 63/63 on
+stated polarities against the Version 2 answer key. That validation was of the *polarity*.
+It was not a validation of the **claim shape**, and the two come apart: five of the
+classifier's six positive patterns never mention a biopsy at all — "known prostate
+cancer", "prior prostate cancer diagnosis", "status post prostatectomy" — and rendering
+every one of them as "a previous biopsy positive for cancer" asserts a procedure the
+section does not describe.
+
+The Aug 30 debug run caught it, and drew the line precisely:
+
+| debug case | what `radiology_report` says | judge |
+|---|---|---|
+| `0cdfb9410718` | "a previously documented positive biopsy bucket" | accepted |
+| `2e0346bce3b3` | "alongside a previously positive biopsy" | accepted |
+| `0020cfca66c8` | "Re-evaluation of prior prostate cancer diagnosis" | *"introduces clinical variables not present in the input data … 'a previous biopsy positive for cancer'"* |
+
+`0020cfca66c8` scored a clean **1.0** on Aug 26 — before Items 8 and 9 — with an explicit
+*"does not contradict the clinical data or hallucinate facts (Step 3)"*, and **0.7** on
+Aug 30. It is the only Task 1 debug case Items 8–9 changed, and the only one that fell.
+
+`PriorContext.states_biopsy` now records whether the report names a biopsy (or quotes a
+grade, which implies one), and the rationale says "a previously diagnosed prostate cancer"
+where it does not. The gap clause inherits the distinction: having declined to call the
+history a biopsy, it no longer names "the earlier biopsy's ISUP grade" as the missing
+fact. Nothing reaches the decision — 27 of 195 Task 1 cases change `free_text` and no
+other key; Tasks 2 and 3 are byte-identical.
+
+**The local A/B does not measure this and is not what justifies it.** Only 3 of the 27
+changed cases are labelled and gate-passed: 2 up (+0.2, +0.1), 1 flat, for
+`mean_rationale_score` 0.806154 → 0.810769 and overall 0.720740 → **0.720872**. In the
+same run 2 *unchanged* cases moved on judge nondeterminism alone (0.7→0.6, 0.9→1.0), so
+the noise floor is the same size as the signal. The justification is that we were
+asserting a procedure the source does not state; the number is not evidence either way.
+
+**The ISUP hallucination flag is not ours and was not fixed here.** Three of three
+gate-passed Task 1 cases were docked for "hallucinating" an `ISUP grade group 1 (Gleason
+3+3)` that appears in neither our output nor the case. Item 8's gap clause, which names
+the ISUP grade in order to say it is absent, was the obvious suspect and is not the cause:
+**the Aug 26 run raised the identical complaint on two of the same cases when our Task 1
+text contained no "ISUP" at all.** The string comes out of the reference rationale and the
+judge attributes it to us — the attribution defect already recorded in
+`docs/debug-phase-notes.md`. Both cases carrying the clause scored *higher* with it than
+without (0.4→0.5, 0.3→0.4), so it stays. Withdrawing it was drafted and reverted.
+
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.
 

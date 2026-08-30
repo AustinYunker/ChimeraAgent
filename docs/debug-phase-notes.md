@@ -467,3 +467,101 @@ as though it were an input. On `T3-006` it calls the deliberate pNx clause "no l
 sampled" *"redundant and potentially misleading"* — that clause is locked by
 `test_unsampled_nodes_are_not_reported_as_negative` and stays, because reporting unsampled
 nodes as negative is the actual error it prevents.
+
+## Third debug submission (v0.4.0, Aug 30) — `metrics_august_30.json`
+
+The first image that contains the MCP subsystem, `inference.py`'s rewrite to reach
+evidence through it, and Items 8 and 9. This is P2 from `docs/validation-staging.md`.
+
+### The container reproduces the local pipeline bit-for-bit
+
+Every platform per-case result was compared against the same case in the local
+`work/run/task1-notes` run across `gate`, `tool_score`, `section_grounding_score`,
+`variable_weight_score`, `confidence_score`, `important_decisive_factor_score` and
+`decision_score`: **84 comparisons, 0 mismatches.** Only `rationale_score` diverges (10
+of 12), which is the judge and not the pipeline.
+
+Two things follow. The image is faithful — nothing about packaging, the read-only
+`/input`, the non-root user or the separate `/tmp` changes a prediction. And **the local
+scorer *is* the evaluator** on every deterministic component, so local A/B on those
+components needs no platform slot at all. That is the strongest form of the C6 rule we
+have measured.
+
+**It does not answer P2 question 1.** A `DirectStore` fallback produces byte-identical
+outputs by construction, so bit-for-bit agreement is exactly as consistent with "MCP
+never started" as with "MCP worked". The `mcp server` handshake line in the container
+logs remains the only evidence, and `metrics.json` does not carry logs. P2 Q1 is still
+open.
+
+### P3 — the judge calibration, re-run paired
+
+11 gate-passed cases, local judge against platform judge:
+
+| | `a4a7f02` (pre-Item-8) | Aug 30 |
+|---|---|---|
+| offset (local − platform), all tasks | −0.118 | **−0.1182** |
+| Pearson, all tasks | +0.818 | **+0.489** |
+| Pearson, Task 1 only (n=3) | — | **+0.982**, local **+0.167 high** |
+| Pearson, Task 2 (n=4) | — | −1.000, across a 0.1 platform spread |
+| Pearson, Task 3 (n=4) | — | −0.447 |
+
+The offset replicated to four decimals across a rewritten rationale, which is a stronger
+result than the correlation looks. The correlation drop is entirely Task 3 — zero
+rationale weight, so it cannot matter — plus a Task 2 anti-correlation computed over
+platform scores of only {0.9, 1.0}, where the ordering is noise by construction.
+
+**Task 1 ordering is perfectly preserved**, so the local judge keeps its licence to rank
+Task 1 variants. But it sits 0.167 *high* in level, so **Items 8 and 9's +0.0693 is an
+upper bound**, not an estimate. The validation-staging worry that a decayed correlation
+would force a keep/drop decision on Items 8–9 does not fire: ranking survived, level did
+not, and only ranking was ever being relied on.
+
+### The one real regression, isolated by pairing Aug 26 against Aug 30
+
+Three Task 1 cases gate-passed in both runs, and Items 8–9 are the only change to our
+text:
+
+| case | Aug 26 | Aug 30 |
+|---|---|---|
+| `PT-pseudo_0020cfca66c8` | **1.0** | **0.7** |
+| `PT-pseudo_0cdfb9410718` | 0.4 | **0.5** |
+| `PT-pseudo_2e0346bce3b3` | 0.3 | **0.4** |
+
+Two up, one down. The two that went up are the two carrying Item 8's ISUP gap clause.
+
+`0020cfca66c8`'s Aug 26 result was a clean 1.0 with an explicit *"does not contradict the
+clinical data or hallucinate facts (Step 3)"*. On Aug 30 the judge quotes one phrase back
+accurately — *"a previous biopsy positive for cancer"* — on a report whose only history
+line is *"Re-evaluation of prior prostate cancer diagnosis"*. That claim is ours, it is
+wrong in shape though right in polarity, and it is Item 10.
+
+### The ISUP hallucination flag: hypothesis raised and withdrawn
+
+All three gate-passed Task 1 cases were docked for "hallucinating" an `ISUP grade group 1
+(Gleason 3+3)`. Item 8's gap clause names the ISUP grade in order to report it missing,
+which made it the obvious suspect, and its removal was drafted.
+
+It is not the cause. **The Aug 26 run raised the identical complaint, verbatim, on two of
+the same cases, at a time when our Task 1 text contained no "ISUP" at all** — the section
+above documents exactly that, with the strings traced into the two reference rationales.
+The removal was reverted before it was measured. Both cases carrying the clause scored
+higher with it than without.
+
+Recording the process failure as well as the result: two changes went into one variant
+before either was tested, against this project's own one-variable rule. The rule exists
+because that is precisely how a correct change and an incorrect one get scored together
+and neither is learned from.
+
+### Two exposures noted and deliberately not acted on
+
+**Confidence is the larger loss.** Both `0cdf` and `2e03` scored `confidence_score`
+**0.0** — `clear` against a reference `uncertain` is the *maximum* ordinal distance, so
+the weight-0.20 component pays nothing, not half — and the judge docked the rationale for
+the same mismatch on top. But Item 6 measured always-`clear` at 0.736 across the full
+91-case Task 1 cohort, tied exactly by a per-stratum oracle. n=4 does not overturn n=91,
+and the debug cases are drawn from the same training data, so this is not new evidence.
+
+**`ungrounded_vars` grew** from `['bx']` to `['bx', 'dre', 'fh']` on these cases between
+Aug 26 and Aug 30: the weight vector now cites variables the revealed section cannot
+ground. `section_grounding_score` did not move, so nothing is being paid for it today.
+Separate thread.

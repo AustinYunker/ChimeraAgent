@@ -44,6 +44,9 @@ Everything below follows from that list.
 
 ## Pre-flight — Aug 30–31, before a single slot is spent
 
+*(Superseded Aug 30: `v0.4.0` is built and debug-submitted, and P0–P3 are all closed
+except P2 Q1. The paragraph below records the state P0–P3 were written against.)*
+
 **The last *built* tag is `v0.3.0` (Aug 26), and the last *submitted* image is
 `v0.2.1` (Aug 24).** Eleven commits sit on top of `v0.3.0`, and they are not
 cosmetic: the entire MCP subsystem — `client.py`, `protocol.py`, `server.py`,
@@ -69,19 +72,42 @@ combination has never been exercised.
   orchestration is compliant. The smoke test now captures each container's log and
   fails if any case shows `falling back` / `retrying with a direct read`, or omits
   the `mcp server` handshake line.
-- **P1. Tag `v0.4.0` and build.** The version string sat at `0.1.0` through four
+- **P1. Tag `v0.4.0` and build.** *(done — built, and the `0.4.0` line is in the
+  Aug 30 run.)* The version string sat at `0.1.0` through four
   tags; it is now bumped and **logged by `inference.py` on startup**, because the
   platform names a submission by upload rather than by content and a debug result
   that cannot be tied to a commit is not evidence of anything.
-- **P2. Debug-submit it.** Three questions, in order of what would hurt most:
+- **P2. Debug-submit it.** *(submitted Aug 30 — `metrics_august_30.json`; Q2 and Q3
+  answered, Q1 still open. Full read in `docs/debug-phase-notes.md`.)* Three questions,
+  in order of what would hurt most:
   1. **Does the MCP subprocess survive the platform's sandbox?** The `mcp server`
      line in the returned logs is the whole answer. If it is absent, every case
      silently ran on `DirectStore` and the architecture question moves from
      "compliant?" to "not implemented".
+     **Unanswered.** `metrics.json` carries no logs, and the outputs cannot decide it:
+     a `DirectStore` fallback is byte-identical by construction, which is exactly why
+     the bit-for-bit agreement below proves nothing here. Ask the organizers for the
+     container logs, or fold the handshake into something the outputs can carry.
   2. Does the container still run clean — sockets, exit codes, wall clock?
+     **Yes, and better than "clean".** All 12 cases returned, and every deterministic
+     component matches the local run on every case: 84 comparisons across `gate`,
+     `tool_score`, `section_grounding_score`, `variable_weight_score`,
+     `confidence_score`, `important_decisive_factor_score` and `decision_score`, **0
+     mismatches**. The local scorer *is* the evaluator on everything but the judge, so
+     no slot need ever be spent on a deterministic component.
   3. What does the platform judge score the new rationale?
+     Task 1 moved two of three gate-passed cases up and one down. The one that fell had
+     been a clean 1.0 on Aug 26, and the judge quoted our own Item 9 phrasing back
+     accurately — see Item 10 in `plan.md`.
 - **P3. Re-run the judge calibration against P2's returned scores**, paired, exactly
-  as `a4a7f02` did.
+  as `a4a7f02` did. *(done — the offset replicated to four decimals, −0.118 →
+  **−0.1182**, across a rewritten rationale. All-task Pearson fell +0.818 → +0.489, but
+  entirely on Task 3, which carries zero rationale weight, and on a Task 2 spread of
+  {0.9, 1.0} where ordering is noise. **Task 1 ordering is perfectly preserved**
+  (Pearson +0.982, n=3), so the local judge keeps its licence to rank Task 1 variants —
+  it just sits ~0.167 high in level, which makes Items 8–9's +0.0693 an upper bound
+  rather than an estimate. The keep/drop decision this step was staged to force does
+  not fire: only ranking was ever relied on, and ranking held.)*
 
 **P3 is the one that is easy to skip and should not be.** The −0.118 offset and
 +0.818 correlation were measured on the *pre-Item-8* rationale. Items 8 and 9 changed
@@ -108,6 +134,13 @@ Two invariants across all five:
 
 Submit exactly what P2 put through debug. Its job is not to score well; it is to
 produce the diagnostic that aims S2–S4. Three things come back:
+
+*(Aug 30: Item 10 has since changed `free_text` on 27 of 195 Task 1 cases and nothing
+else — Tasks 2 and 3 are byte-identical. It is a correctness fix, not a tuning change:
+we were asserting a biopsy the source never mentioned. It goes through debug first, and
+S1 then freezes on whatever debug last scored, which keeps the invariant intact. The
+Task 1 numbers in the table below are pre-Item-10; the post-Item-10 values are
+`mean_rationale_score` 0.8108 and overall 0.7209.)*
 
 - **the cohort size** — if validation turns out to be debug-sized, every delta below
   is noise and this plan collapses to "S1, dress rehearsal, stop";
@@ -187,3 +220,13 @@ why it is not scheduled for Sep 9.
   slot.
 - **Confidence.** Proved constant-optimal under `1 − |Δ|/2` (0.643 always-`clear` vs
   0.633 `borderline` on the hard stratum). There is no variant to test.
+
+  Aug 30 is the standing temptation to reopen this, and the note is here so it is
+  reopened on evidence rather than on sting. Two of the three gate-passed Task 1 debug
+  cases scored `confidence_score` **0.0** — `clear` against a reference `uncertain` is
+  the *maximum* ordinal distance, so the component pays **nothing**, not half; at weight
+  0.20 that is the single largest per-case loss visible anywhere in the run, and the
+  judge docked the rationale for the same mismatch on top of it. It is still not a
+  finding. Item 6's 0.736 is measured over all 91 labelled Task 1 cases and tied exactly
+  by a per-stratum oracle; four cases drawn from that same cohort cannot overturn it, and
+  the two that hurt are the tail the constant is already known to pay for.
