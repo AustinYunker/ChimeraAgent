@@ -492,8 +492,23 @@ plumbing run exists to catch.
 Debug submissions are cheap and unmetered against validation. Every container change
 from here goes through debug before it goes anywhere else.
 
-### C6 — Validation spend *(Sep 5–8)*
-Submissions 2–5, staged so each answers a distinct question rather than chasing noise.
+### C6 — Validation spend *(Sep 1–8)*
+Staged in **`docs/validation-staging.md`** so each slot answers a distinct question
+rather than chasing noise. *(This header read Sep 5–8, which dated from when
+validation opened Aug 10.)*
+
+The governing rule: the debug phase is unmetered and returns the platform judge's own
+per-case scores, so **anything debug can answer may not consume a validation slot**.
+Debug cases are drawn from our training data, which leaves validation exactly one
+question — generalisation — in four forms: the text parsers on unseen prose, the
+reference-derived components against annotation we did not fit to, the decision
+model's gate-pass rate off-training, and our absolute score.
+
+> **Pre-flight, before Sep 1:** nothing since `v0.2.1` (Aug 24) has been through a
+> container, and Items 8–9 are source-only. Build from HEAD, debug-submit, and
+> **re-run the judge calibration** — the +0.818 correlation licensing every local A/B
+> was measured on rationale text that Items 8 and 9 have since changed on 147 of 195
+> Task 1 cases.
 
 ### C7 — Test submission + paper *(Sep 8–10)*
 One shot. Freeze the model, submit, write the LNCS paper against the frozen artefact.
