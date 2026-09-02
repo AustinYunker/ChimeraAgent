@@ -258,6 +258,66 @@ The largest localised gap — which is what the section header commits S2 to, an
 the enumerated rows failed to anticipate because Task 2 was the *healthy* task when
 they were written — is Task 2's AS→AT cell. See the S2 candidate below.
 
+#### The leaderboard leader's S1, read alongside ours — notes only
+
+Same standing rule as the debug phase: read it, note what is interesting, change
+nothing on account of it. What follows changed no decision; it *confirmed* one that
+the training data had already made.
+
+It is the **same 109 cases**, so this is a paired comparison rather than two cohorts.
+Overall 0.8361 against our 0.7356. The gap decomposes almost entirely onto one task:
+
+| | ours | leader | gap | × weight |
+|---|---|---|---|---|
+| Task 1 | 0.7800 | 0.8219 | +0.0420 | +0.0168 |
+| Task 2 | 0.6666 | **0.8923** | **+0.2257** | **+0.0903** |
+| Task 3 | **0.7851** | 0.7521 | −0.0331 | −0.0066 |
+| overall | 0.7356 | 0.8361 | +0.1005 | |
+
+**Task 2's AS/AT boundary is learnable — this is the useful fact.** They score
+**11/11** on `active_surveillance` where we score 3/11; their only Task 2 error in 36
+cases is a single AT→AS. Our counterfactual said fixing that cell is worth +0.0868,
+and someone has now demonstrated 35/36 on it. The estimate was a ceiling on paper;
+it is an achieved number in practice. That is independent corroboration for the S2
+candidate below, arriving from a system that shares none of our code.
+
+**The reasoning components are not how they win.** Their per-component means are
+comparable to ours and in several places *worse* — Task 1 `section_grounding` 0.617
+vs our 0.696, Task 1 `important_decisive_factor` 0.594 vs our 0.619, Task 3
+`rationale` 0.196 vs our 0.274. The entire 0.1005 is decision accuracy. This is a
+second, independent confirmation of the counterfactual table: components are cheap,
+decisions are everything.
+
+**The reveal policy is not a differentiator, and that closes row 2 for good.** Their
+reveal behaviour is all but identical to ours — a mean of 0.98 sections revealed per
+Task 1 case (ours 1.00) and **zero** on Task 2 (ours zero). They carry *more*
+ungrounded variables per Task 1 case than we do (3.07 vs 2.39). Route B was rejected
+at −0.0045 on training reference sets and the mapping reserved a slot to price it
+against real ones; a system 0.10 ahead of us declining to reveal anything on Task 2
+prices it well enough. Do not spend a slot there.
+
+**Task 1's remaining headroom is smaller than it looks.** Their 4 misses are a strict
+subset of our 6 — the same 4 `yes` cases defeat both systems, and only 2 are
+differentially reachable. Both systems fail in the same direction (`yes`→`no`, with
+`no` recall 27/27 for both). A hard core that two unrelated systems miss identically
+is more likely a property of those cases than of either model.
+
+**Task 3 is the one place we lead, and for the right reason.** Our C-index is 0.7851
+against their 0.7521, while their time-dependent AUC is *higher* (0.8499 vs 0.8295)
+and their `event1_time_mae_months` better (37.99 vs 43.97). They are ahead on two
+metrics that are reported and behind on the one that is ranked. The csPCa tie-break
+was taken specifically because Task 3's ranking score is the C-index alone; this is
+that decision paying off against a system optimising something adjacent.
+
+**A hazard this file now has to name.** Both metrics files carry `gt_decision` for
+all 109 validation cases, so validation ground truth is in hand. None of those cases
+exists in `work/train/cases` — the cohorts are disjoint, so no feature-level fitting
+is even possible — but the labels alone are enough to tune by, across slots, if we
+let ourselves. We will not. The S2 candidate is fitted on the 72 labelled *training*
+cases and rests on an EAU indication that was true before this file was downloaded.
+Validation stays an instrument for measuring generalisation; the moment it becomes a
+training set, the Sep 10 one-shot has nothing left to measure it with.
+
 ### S2 — the response to S1's largest localised gap
 
 The mapping is fixed **now**, so that S1's number cannot be rationalised into
