@@ -161,6 +161,103 @@ Task 1 numbers in the table below are pre-Item-10; the post-Item-10 values are
 A uniform sag across all six means the cohort is harder and nothing is wrong. A
 single component collapsing is the actionable case, and it names its own fix.
 
+#### S1 result — Sep 2, `val_metrics_S1.json`
+
+Submitted artefact: the `v0.4.1` image at `869b118`, byte-identical in its image
+inputs (`pyproject.toml LICENSE NOTICE src/ inference.py`) to `master` at `6929259`.
+
+**The three pre-registered reads, answered.**
+
+1. **Cohort size: 109 cases** — Task 1 n=50, Task 2 n=36, Task 3 n=23. Not
+   debug-sized. Deltas below are legible and this plan does not collapse.
+2. **Per-case components are returned in full** — `gate`, all six component
+   scores, `pred_*`/`gt_*`, and the judge `reason` string, which additionally
+   spells out `tool: precision=… extra=…` and an explicit `ungrounded_vars=[…]`
+   list. The diagnostic table is available; no slot degrades to one bit.
+3. **The per-component profile** (local → validation, gate-passed means):
+
+| component | weight | T1 local | T1 val | T2 local | T2 val |
+|---|---|---|---|---|---|
+| `decision_gate_pass_rate` | — | 0.7143 | **0.8800** | 0.8056 | 0.7778 |
+| `confidence_score` | 0.20 | 0.7615 | 0.8750 | 0.8966 | 0.7857 |
+| `variable_weight_score` | 0.25 | 0.8615 | **0.7091** | 0.8492 | **0.7469** |
+| `important_decisive_factor_score` | 0.15 | 0.7336 | 0.6189 | 0.6930 | 0.6360 |
+| `tool_score` | 0.15 | 0.9846 | 1.0000 | 1.0000 | 1.0000 |
+| `section_grounding_score` | 0.05 | 0.6747 | 0.6959 | 0.2192 | 0.2276 |
+| `rationale_score` | 0.20 | 0.8108 | 0.8841 | 0.8621 | 0.8321 |
+| **`ranking_score`** | — | 0.6963 | **0.7800** | 0.7298 | **0.6666** |
+
+Task 3 C-index 0.7522 → **0.7851**. Overall **0.7209 → 0.7356**.
+
+Two formulas are now confirmed against real platform output rather than inferred:
+`overall = 0.4·T1 + 0.4·T2 + 0.2·T3` reproduces `0.7356319637181001` exactly, and
+`ranking = (mean_case_score + task_f1) / 2` reproduces both task scores to full
+float precision — `decision_f1_yes` for Task 1, `decision_weighted_f1` for Task 2.
+`variable_weight_weighted_kappa` and `confidence_weighted_kappa` appear in neither.
+
+**The finding: both error sets are unidirectional, and the direction reversed on
+Task 1.**
+
+| | training | validation |
+|---|---|---|
+| Task 1 | 24 false-`yes`, 2 false-`no` | **0 false-`yes`, 6 false-`no`** |
+| Task 2 | 7 AS→AT, and 7 others across four cells | **8 AS→AT, nothing else** |
+
+Task 1's `yes` precision is **1.00** on validation. The high-PI-RADS/prior-positive
+leaf that holds 22 of 24 training false-yes errors produced *none* here, on a cohort
+that is *less* `yes`-heavy than training (46% vs 62%). Task 2's errors, by contrast,
+collapsed onto the single cell that was already the largest on training — the same
+failure, concentrated.
+
+**What each remaining gap is worth**, as lift on `overall_ranking_score` (0.7356) if
+driven to a perfect score, decisions held fixed:
+
+| | T1 | T2 |
+|---|---|---|
+| `variable_weight_score` → 1.0 | +0.0128 | +0.0098 |
+| `important_decisive_factor_score` → 1.0 | +0.0101 | +0.0085 |
+| `confidence_score` → 1.0 | +0.0044 | +0.0067 |
+| `rationale_score` → 1.0 | +0.0041 | +0.0052 |
+| `section_grounding_score` → 1.0 | +0.0027 | +0.0060 |
+| **all six components perfect** | **+0.0341** | **+0.0362** |
+| **the decision cell alone** | **+0.0494** | **+0.0868** |
+
+Every component on both tasks, perfected, is worth less than Task 2's one confusion
+cell. Fixing merely **four of the eight** AS→AT cases is +0.0463.
+
+**Two things worth recording that no row of the mapping asked for.**
+
+*Task 2 reveals nothing.* `reveal_sequence` is `[]` on every Task 2 leaf, so
+`tool_score = 1.0` there is precision over the empty set — vacuous, not earned. It
+is also the whole explanation for `section_grounding_score` 0.2276: the judge lists
+`cspca, ct, fh, pirads, psad` as ungrounded on **100%** of gate-passed Task 2 cases
+and the three `bx_*` fields on 68%, a mean of 7.04 ungrounded variables per case
+(Task 1: `bx` and `dre` on 100%, `fh` on 39%, mean 2.39). This is chronic, not a
+regression — local grounding was 0.2192 — and the table above prices closing it at
++0.0060. Note the exposure, do not spend a slot on it.
+
+*The judge's Task 3 rationale complaint is the same contamination class as Item 10.*
+It charges a rationale with citing "a preoperative PSA of 6.3 ng/mL, which is not
+available in the Input" while also objecting to the csPCa probability that *is*.
+`mean_rationale_score` 0.2739 on Task 3 is unranked — the C-index is the whole score
+there — so this costs nothing and stays a note.
+
+**Reading this against the S2 mapping.** Rows 1 and 2 did not fire and row 4 is
+struck: Task 1's gate-pass rate went *up* 0.166, tool is 1.0, grounding rose on both
+tasks, and rationale rose on Tasks 1 and 3. Row 3 fired — but on the *unranked*
+kappa (T1 0.6045 → 0.2273, T2 0.4791 → 0.3393) and on the ranked per-case score
+behind it (−0.152, −0.102), and its ceiling across both tasks is +0.0226.
+
+Row 1's prescription must not be executed. It says to widen Task 1 toward the
+majority class in the leaf holding the false-yes errors; validation has **zero**
+false-yes errors, so that edit could only manufacture false-negatives, which are now
+the only Task 1 errors that exist. That is the row's own stated mechanism refusing
+it, not a preference overriding it.
+
+The largest localised gap — which is what the section header commits S2 to, and what
+the enumerated rows failed to anticipate because Task 2 was the *healthy* task when
+they were written — is Task 2's AS→AT cell. See the S2 candidate below.
+
 ### S2 — the response to S1's largest localised gap
 
 The mapping is fixed **now**, so that S1's number cannot be rationalised into
@@ -185,6 +282,39 @@ one to be ready for.
 That last row is the important one. With an unknown cohort size and a one-shot test,
 chasing a sub-point difference on unseen data is the same selecting-on-noise the Task 3
 tie-break and the Item 8 stratum restriction were both refused for.
+
+*(Sep 2: the cohort is 109, not debug-sized, so the "unknown cohort size" caveat is
+retired. The selecting-on-noise discipline is not — it is exactly why the S2 candidate
+below is fitted on **training** and merely *priced* on validation.)*
+
+#### S2 candidate — split `positive_intermediate` on ISUP 1
+
+Fitted on the 72 labelled training cases, never on validation. All 7 training AS→AT
+errors sit in one leaf, and inside it ISUP separates cleanly:
+
+| `positive_intermediate` | n | AS | AT | WW |
+|---|---|---|---|---|
+| ISUP 1 | 4 | **4** | 0 | 0 |
+| ISUP 2 | 17 | 3 | 12 | 2 |
+| ISUP 3 | 4 | 0 | 4 | 0 |
+
+The four ISUP-1 cases (`T2-006`, `T2-016`, `T2-049`, `T2-055`) are intermediate-risk
+*only* because PSA sits in the 10–20 band (13.5, 13.6, 11.7, 12.6) while the biopsy
+is Gleason 3+3. That is the textbook active-surveillance indication, and EAU says so
+independently of this cohort — which is the point. The rule is not a 4/4 coincidence
+mined out of 72 cases; it is a guideline the 4/4 happens to confirm. Contrast the
+ISUP-2 residue, which splits 3 AS / 12 AT / 2 WW and is refused for the same reason
+Item 5's 21/22 leaf was: nothing reachable beats the coin flip.
+
+Cost on training is **zero cases** — no ISUP-1 case in that leaf is labelled AT — so
+leaf accuracy goes 0.8056 → 0.8611 with no offsetting loss. Prices on validation, if
+the leaf structure transfers, at **+0.0463 for four of eight** and +0.0868 for all
+eight; even one case is +0.0125, larger than perfecting Task 2's grounding.
+
+Before this is submitted it must clear the project's standing bars: re-fit through
+`fit_models` so the new leaf carries its own `reasoning` block rather than inheriting
+`__default__`; confirm Task 1 and Task 3 outputs are byte-identical; and score with
+the official `evaluate.py`, not the fast scorer. One variable, one slot.
 
 ### S3 — second iteration on whatever S2 moved, or the second-largest gap
 
