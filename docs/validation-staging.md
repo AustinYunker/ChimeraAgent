@@ -376,6 +376,50 @@ Before this is submitted it must clear the project's standing bars: re-fit throu
 `__default__`; confirm Task 1 and Task 3 outputs are byte-identical; and score with
 the official `evaluate.py`, not the fast scorer. One variable, one slot.
 
+##### Built and measured, Sep 2
+
+All three bars cleared.
+
+*The label was not asserted, it was fitted.* `fit_models` enumerates every leaf
+label against the official ranking metric; given the new leaf it independently chose
+`active_surveillance`, and left all five existing labels unchanged. CV 0.6561 →
+0.7021 (+0.0460) at sd 0.0009. The hypothesis picked the boundary; the metric picked
+the label.
+
+*The blast radius is exactly Task 2.* `diff -r` over the 423-case run directory
+reports 16 differing files — 8 cases × 2 sockets — and **every one** is
+`prostate-treatment-decision*.json`. The 8 are all ISUP 1 with PSA 11.0–15.0: the
+four labelled cases the split was designed for, plus four unlabelled ones that fall
+in the same band.
+
+*Official `evaluate.py`, judge on* (`scripts/score-judged.sh`, gemma4:e4b):
+
+| | before | after | Δ |
+|---|---|---|---|
+| Task 1 ranking | 0.6963 | 0.6963 | **0.0000** |
+| Task 2 ranking | 0.7298 | **0.7808** | **+0.0510** |
+| Task 3 ranking | 0.7522 | 0.7522 | **0.0000** |
+| overall | 0.7209 | **0.7413** | **+0.0204** |
+
+Task 2's gate-pass rate 0.8056 → 0.8611, `decision_weighted_f1` 0.7918 → 0.8490.
+Two small components moved against us as the 8 cases switched reasoning blocks —
+`variable_weight_weighted_kappa` −0.0142, `section_grounding` −0.0012 — and are
+swamped by the decision term, which is the whole thesis of the S1 read.
+
+*A noise floor came free.* Task 1 and Task 3 are byte-identical between runs, and
+their **judged** `mean_rationale_score` reproduced to four decimals (0.8108 and
+0.2160). So the Task 2 delta is signal, not judge variance — and this extends the
+`score-judged.sh` reproducibility note from 147 cases to a run where Task 1 is held
+fixed at 91.
+
+*What it should be worth on validation, stated before submitting.* Training had 7
+AS→AT errors and this fixes 4. Validation has 8. If the ISUP-1 share transfers, that
+is 4–5 cases, which the S1 counterfactual prices at **+0.046 to +0.057 overall**
+(0.7356 → ~0.78–0.79). If the share does not transfer the lift is smaller, and the
+honest floor is +0.0125 for a single case. Recording the interval now is the point:
+S2 is legible either way, and a result outside it is information about the cohort
+rather than a licence to re-fit.
+
 ### S3 — second iteration on whatever S2 moved, or the second-largest gap
 
 Only if S2's result is legible. If S2 came back inside noise, S3 is not spent.
