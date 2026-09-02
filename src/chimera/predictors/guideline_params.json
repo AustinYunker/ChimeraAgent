@@ -86,11 +86,12 @@
     ],
     "cv_baseline_constant": 0.24862558424121262,
     "cv_beats_baseline_beyond_noise": true,
-    "cv_score": 0.6560559880028523,
-    "cv_sd": 0.0007768934951622491,
+    "cv_score": 0.7020823200719034,
+    "cv_sd": 0.0008549785706850174,
     "leaf_labels": {
       "positive_high": "active_treatment",
       "positive_intermediate": "active_treatment",
+      "positive_intermediate_isup1": "active_surveillance",
       "positive_low": "active_surveillance",
       "prior_negative": "continued_surveillance",
       "unknown": "active_treatment"

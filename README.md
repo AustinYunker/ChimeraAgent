@@ -68,10 +68,13 @@ alone). Six patients change and PI-RADS alone is right on four of them.
 
 Three findings drove the wins:
 
-- **Task 2 is a two-stage decision, not a flat four-way choice.** Prior biopsy
+- **Task 2 is a three-stage decision, not a flat four-way choice.** Prior biopsy
   result separates `continued_surveillance` almost perfectly (13 of 14 negative
   biopsies), and EAU risk then splits the rest — `positive_high` is 12/12
-  `active_treatment`. Gate pass went 0.431 → 0.806.
+  `active_treatment`. EAU `intermediate` is a residual band, though, and splitting
+  it on ISUP recovers the low-grade cases that are intermediate only by PSA: that
+  subgroup is 4/4 `active_surveillance`, and it held every one of the remaining
+  surveillance-called-treatment errors. Gate pass went 0.431 → 0.806 → 0.861.
 - **Task 3's reports are templated**, so every surgical-pathology field CAPRA-S
   needs parses at 100%: grade, stage, margins, EPE, SVI, and nodal status with
   pNx correctly distinguished from pN0.

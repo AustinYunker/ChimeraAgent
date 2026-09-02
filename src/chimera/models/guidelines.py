@@ -265,13 +265,44 @@ TASK1_LEAVES: tuple[str, ...] = (
     "naive_pirads_unknown",
 )
 
+#: EAU risk, with one split inside it.
+#:
+#: ``intermediate`` is the residual band -- neither every low criterion met nor any
+#: high one -- so it collects two clinically different populations under one label,
+#: and it held **all 7** of the training active-surveillance-called-active-treatment
+#: errors. ISUP separates them cleanly:
+#:
+#: ============  ==  ==  ==  ==
+#: intermediate   n  AS  AT  WW
+#: ============  ==  ==  ==  ==
+#: ISUP 1         4   4   0   0
+#: ISUP 2        17   3  12   2
+#: ISUP 3         4   0   4   0
+#: ============  ==  ==  ==  ==
+#:
+#: The ISUP-1 cases are intermediate *only* because PSA sits in the 10-20 band while
+#: the biopsy is Gleason 3+3, which is the textbook active-surveillance indication --
+#: EAU says so independently of this cohort. That is what justifies the split; the
+#: 4/4 merely fails to contradict it. A 4/4 alone would not be enough to act on.
+#:
+#: The ISUP-2 residue splits 3/12/2 and is deliberately left alone, for the reason
+#: :data:`TASK1_LEAVES` leaves its 21/22 leaf alone: nothing reachable beats the coin
+#: flip, and a constant fitted to a near-even split is fitted to noise.
+#:
+#: Note that the label below is *not* asserted here -- ``fit_models`` enumerates it
+#: against the official ranking metric like every other leaf. The split states where
+#: the boundary is; the fit decides what to do with it.
 TASK2_LEAVES: tuple[str, ...] = (
     "prior_negative",
     "positive_low",
+    "positive_intermediate_isup1",
     "positive_intermediate",
     "positive_high",
     "unknown",
 )
+
+#: ISUP at or below this is low-grade disease -- Gleason 3+3, no pattern 4.
+ISUP_LOW_GRADE = 1
 
 LEAVES_BY_TASK: dict[int, tuple[str, ...]] = {1: TASK1_LEAVES, 2: TASK2_LEAVES}
 
@@ -295,6 +326,8 @@ def _task2_stratum(features: StructuredFeatures) -> str:
     risk = eau_risk(features)
     if risk is None:
         return "unknown"
+    if risk == "intermediate" and features.bx_isup == ISUP_LOW_GRADE:
+        return "positive_intermediate_isup1"
     return f"positive_{risk}"
 
 

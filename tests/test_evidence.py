@@ -9,8 +9,12 @@ the model fall back, rather than raising and losing the case to a sentinel label
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
+from chimera.contract import spec
 from chimera.contract.io import CaseInputs
 from chimera.evidence import (
     classify_prior_biopsy,
@@ -20,7 +24,7 @@ from chimera.evidence import (
 )
 from chimera.evidence.reports import NOT_ASSESSED, PriorContext
 from chimera.mcp.client import DirectStore
-from chimera.models.guidelines import capra_s, eau_risk, stratum
+from chimera.models.guidelines import TASK2_LEAVES, capra_s, eau_risk, stratum
 from chimera.models.stratified import (
     FALLBACK_MONTHS,
     MONTHS_AT_ZERO_RISK,
@@ -542,3 +546,58 @@ def test_stratum_is_total():
     for task in (1, 2):
         leaf = stratum(task, _features(task, {}))
         assert isinstance(leaf, str) and leaf
+
+
+def test_low_grade_intermediate_splits_out_of_the_residual_band():
+    """ISUP 1 at PSA 10-20 is intermediate only by PSA -- the split's whole point.
+
+    That subgroup held 4 of the 7 training active-surveillance cases we were
+    calling active_treatment, and none of the leaf's active_treatment cases.
+    """
+    f = _features(2, {"bx": "Positive", "bx_isup": 1, "psa": 13.5, "ct": "cT1c"})
+    assert eau_risk(f) == "intermediate"
+    assert stratum(2, f) == "positive_intermediate_isup1"
+
+
+@pytest.mark.parametrize("isup", [2, 3])
+def test_the_intermediate_residue_is_left_alone(isup):
+    """3/12/2 is a coin flip; only ISUP 1 leaves the residual band."""
+    f = _features(2, {"bx": "Positive", "bx_isup": isup, "psa": 13.5, "ct": "cT1c"})
+    assert stratum(2, f) == "positive_intermediate"
+
+
+def test_an_unknown_grade_cannot_buy_the_low_grade_leaf():
+    """The mirror of `test_eau_unknown_field_cannot_produce_low_risk`.
+
+    Missing data must not route a case toward the less aggressive label. An
+    absent `bx_isup` stays in the residual band, which is the safe direction.
+    """
+    f = _features(2, {"bx": "Positive", "psa": 13.5, "ct": "cT1c"})
+    assert eau_risk(f) == "intermediate"
+    assert stratum(2, f) == "positive_intermediate"
+
+
+@pytest.mark.parametrize(
+    "prompt, expected",
+    [
+        ({"bx_isup": 1, "psa": 5.0, "ct": "cT1c"}, "positive_low"),
+        ({"bx_isup": 1, "psa": 25.0, "ct": "cT1c"}, "positive_high"),
+        ({"bx_isup": 1, "psa": 5.0, "ct": "cT3a"}, "positive_high"),
+    ],
+)
+def test_the_split_only_touches_the_intermediate_band(prompt, expected):
+    """Low and high are decided before the split is consulted, so ISUP 1 alone
+    must not pull a case out of either."""
+    assert stratum(2, _features(2, {"bx": "Positive", **prompt})) == expected
+
+
+def test_every_task_2_leaf_carries_a_fitted_label():
+    """A leaf with no entry in `leaf_labels` would fall through to a default at
+    inference time -- silently, and only on the cohort that reaches it."""
+    params = json.loads(
+        (Path("src/chimera/predictors/guideline_params.json")).read_text()
+    )
+    labels = params["task2"]["leaf_labels"]
+    for leaf in TASK2_LEAVES:
+        assert leaf in labels, f"{leaf} has no fitted label"
+        assert labels[leaf] in spec.TREATMENT_DECISIONS
