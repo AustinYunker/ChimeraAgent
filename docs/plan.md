@@ -11,7 +11,27 @@ The deadline structure is unforgiving and drives everything below:
 | ~~Aug 10~~ **Sep 1, 2026** | Validation opens — **5 submissions total**, best counts *(pushed back by the organizers)* |
 | **Sep 10, 2026** | Test set — **one single submission**, no retries |
 | Dec 18, 2026 | Debug phase closes — unmetered, 3/day, a subset of the released dev data |
-| Sep 27–Oct 1 | MICCAI; 6-page LNCS paper + public repo required for ranking |
+| Sep 27–Oct 1 | MICCAI 2026 |
+
+**Correction, Sep 3.** This table previously read "6-page LNCS paper + public repo
+required for ranking". The challenge site splits those, and the split matters:
+
+- The **manuscript is the ranking gate** — the submission page calls a "6-page
+  method description paper" in the "MICCAI Springer LNCS template, excluding
+  references" *mandatory to qualify for the final ranking*. Drafted in
+  [`paper/`](../paper/); see [`paper/main.tex`](../paper/main.tex).
+- The **public repo is only a prize gate**. The rules page accepts "a public *or
+  private* GitHub URL with the algorithm's source code, released under a permissive
+  license", and the submission page says open-sourcing "is encouraged rather than
+  required" while "Prize incentives are offered exclusively for open-source
+  submissions". Apache 2.0 already satisfies the licence clause. The GitHub link
+  goes *inside the paper*.
+- **No manuscript deadline is published** on the timeline, rules or submission
+  pages. Asked in [`organizer-email.md`](organizer-email.md).
+- **Publication embargo**: results on the public training set may not be published
+  until the challenge journal paper and baseline paper appear, and the challenge
+  publication must be cited. The challenge manuscript is the sanctioned channel, so
+  the tool-metric finding cannot be spun out separately until the embargo lifts.
 
 Roughly five weeks, with a one-shot final submission. That inverts the usual priority order: **contract conformance and infrastructure must be proven before modelling starts**, because a container that fails to run on Sep 10 scores zero regardless of model quality.
 
@@ -574,6 +594,18 @@ model's gate-pass rate off-training, and our absolute score.
 
 ### C7 — Test submission + paper *(Sep 8–10)*
 One shot. Freeze the model, submit, write the LNCS paper against the frozen artefact.
+
+> **Paper drafted Sep 3**, ahead of the submission rather than after it, so the two
+> do not compete for the same days. The method is frozen at v0.5.0, so only numbers
+> land later: [`paper/main.tex`](../paper/main.tex) is complete at 6 pages excluding
+> references, with the test row of Table 2 left as the single placeholder. Build with
+> `cd paper && ./fetch-template.sh && make pages`.
+>
+> Its two non-obvious contributions, both drawn from work already recorded here: the
+> `cost_aware_tool_score` dominance property (from `organizer-email.md` §1), reported
+> rather than exploited; and the cross-validated negative results showing that
+> per-case reasoning-component conditioning is not learnable from these data
+> (measured Sep 3, recorded in `validation-staging.md`).
 
 ---
 

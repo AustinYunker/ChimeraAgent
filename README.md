@@ -5,6 +5,21 @@ prostate-cancer decision support across three tasks, where every prediction must
 be accompanied by a structured reasoning trace that is itself scored.
 
 Full strategy, checkpoints and timeline: [`docs/plan.md`](docs/plan.md).
+Method description paper (6-page LNCS): [`paper/`](paper/) — build with
+`cd paper && ./fetch-template.sh && make`.
+
+## Data, licensing and embargo
+
+Source is Apache 2.0 (see [`LICENSE`](LICENSE), [`NOTICE`](NOTICE)); it carries no
+third-party code. The challenge data is **not** redistributed here and never has
+been — no path under `data/`, `refs/` or `work/` has ever been committed. That data
+is licensed CC BY-NC-SA 4.0 by the organizers and must be obtained from the
+challenge directly.
+
+Results reported here and in the paper use the CHIMERA-agent public training and
+validation data under the challenge's **publication embargo**: they may not be
+published until the challenge journal paper and baseline paper appear, and the
+challenge publication must be cited.
 
 ## Status
 

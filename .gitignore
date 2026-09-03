@@ -53,7 +53,25 @@ htmlcov/
 .idea/
 .DS_Store
 .loglogin
+.deepeval
 .claude/settings.local.json
+
+# --- Manuscript --------------------------------------------------------------
+# Springer distributes `llncs.cls` for author use, not under an open licence, and
+# NOTICE asserts this repository carries no third-party code. `fetch-template.sh`
+# pulls it on demand instead; only our own .tex/.bib/figures are tracked.
+paper/llncs.cls
+paper/llncs.dem
+paper/llncsdoc.pdf
+paper/splncs04.bst
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.pdf
+paper/*.synctex.gz
 
 # --- Platform artefacts pulled down by hand ----------------------------------
 # Leaderboard metrics dumps, the debug-submission screenshot and its details
@@ -71,3 +89,4 @@ htmlcov/
 /metrics_august_30_part2.json
 /val_metrics_S1.json
 /val_metrics_best_score.json
+/val_metrics_S2.json

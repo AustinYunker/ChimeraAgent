@@ -151,11 +151,25 @@ We would be glad to supply the case IDs and full reason strings for any of these
   currently emitting both filenames because we cannot inspect those phases, and
   the test phase allows only one submission.
 - Neither `chimera-agent-baseline` nor `CHIMERA-agent` currently carries a
-  licence file, which leaves them all-rights-reserved by default. Since ranked
-  entries must publish a public repository, participants building on the
-  baseline have no explicit permission to redistribute derived code. Would you
-  consider adding a permissive licence? We have written our own implementation
-  against the published interface to avoid the question, but others may not.
+  licence file, which leaves them all-rights-reserved by default. Since the
+  rules require submitted source to be "released under a permissive license",
+  participants building on the baseline have no explicit permission to
+  redistribute derived code, and prize eligibility additionally requires an
+  open-source submission. Would you consider adding a permissive licence? We
+  have written our own implementation against the published interface to avoid
+  the question, but others may not.
+
+**7. Manuscript logistics, which we could not find published.**
+
+- The submission page requires a 6-page LNCS method description to qualify for
+  the final ranking, but we can find **no manuscript deadline or submission
+  channel** on the timeline, rules or submission pages — only the 10 September
+  deadline for validation and test submissions. When is the paper due, and
+  where should it be sent?
+- The rules accept "a public or private GitHub URL", while the submission page
+  offers prize incentives "exclusively for open-source submissions". Must the
+  repository be **public at the time of submission**, or may a private repo be
+  made public later without affecting prize eligibility?
 
 Thank you for your time — we appreciate that this is a lot of detail, and are
 glad to supply minimal reproductions for anything above.
