@@ -1,0 +1,403 @@
+% CHIMERA-agent (MICCAI 2026) -- 6-page method description, framed as a
+% development case study.  Build: ./fetch-template.sh && make
+%
+% TODO before submission:
+%   - e-mail (marked \todo{} below)
+%   - the test-set row in Table 3, once the Sep 10 submission resolves
+%   - Sect. 5 states the reveal-honesty rule was "fixed at the outset".  That is
+%     true of the rule; the record does NOT establish whether the author or the
+%     agent originated it.  Confirm before submission, or soften the phrasing.
+%
+% Layout note: the body is exactly six pages and the references start on p7.
+% The float definitions are placed deliberately -- tab:removed sits AFTER the
+% first paragraph of Sect. 3, not before it, because a float defined at the top
+% of a section pins the text that follows it to the float's page and leaves the
+% preceding page underfull.  Moving it back costs a page.
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\todo}[1]{\textcolor{red}{[#1]}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{10pt plus 2pt minus 2pt}
+\setlength{\intextsep}{10pt plus 2pt minus 2pt}
+
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.85}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+
+\begin{document}
+
+\title{It Takes an Agent to Build an Agent}
+\subtitle{Building a Prostate Cancer Decision-Support Agent Without One}
+
+\author{Austin M. Yunker\thanks{Code, plan documents and A/B records:
+\url{https://github.com/AustinYunker/ChimeraAgent} (Apache~2.0). Results use the
+CHIMERA-agent data under CC~BY-NC-SA~4.0 and the challenge's publication embargo.}}
+\institute{Loyola University Chicago, Chicago IL, USA \\ \email{\todo{e-mail}}}
+
+\maketitle
+
+\begin{abstract}
+We entered the CHIMERA-agent challenge with two goals: to place well, and to learn
+how an autonomous coding agent fares when it is the one entering. The entry was
+designed, implemented and measured by an LLM agent (Claude Opus~5) directed by a
+human over 27 days, against an audit trail of commits, pre-registered predictions
+and cross-validated A/B tests. Its founding plan specified a hybrid system in which
+a language model gathered evidence and wrote the rationale; none of it survived. A
+closed loop --- read the released scorer, hypothesise, measure, let the measurement
+decide --- removed every learned and generative component that plan proposed,
+leaving a system whose entire fitted object is nine categorical labels and which
+runs no language model at inference. It reaches a validation ranking score of
+$0.8061$ and beats a random forest out of fold. We report the method, what
+measurement removed, and the five points where the loop needed a human.
+
+\keywords{Agentic software development \and Prostate cancer \and Reasoning traces
+\and Model Context Protocol}
+\end{abstract}
+
+\section{Introduction}
+
+CHIMERA-agent~\cite{chimera} sets three prostate-cancer tasks over multimodal
+records from Radboudumc and Karolinska: whether to biopsy on MRI alone (Task~1), how
+to treat given MRI and biopsy (Task~2), and time to biochemical recurrence after
+prostatectomy (Task~3). Its distinguishing feature is that the \emph{reasoning
+trace} is scored --- a confidence level, a weighting of each clinical variable, a
+declared sequence of record sections retrieved over the Model Context Protocol
+(MCP)~\cite{mcp}, and a free-text rationale graded by a G-Eval-style
+judge~\cite{geval}.
+
+\paragraph{Disclosure.}
+The architecture, code, experiments and measurements reported here were produced by
+Claude Opus~5 operating with shell and file-system tools over 27 days, directed by
+the author, who reviewed the work, made the decisions in Sect.~\ref{sec:human}, and
+is the sole author and accountable party. Per COPE guidance a language model cannot
+be an author; it is disclosed as a method, and named because the result is a claim
+about agent-driven development.
+
+\paragraph{The question, and the loop.}
+The second goal made the process an object of study, and it ran as a closed loop:
+read the released evaluator, form a hypothesis about what it rewards, measure that
+hypothesis under cross-validation, and let the measurement --- not the plan, and not
+intuition about what an agent \emph{ought} to look like --- decide what ships. The
+loop was not neutral about its own conclusion. The founding plan of 8~August
+specified a ``hybrid architecture'' whose free text came from ``a real MCP-driven
+LLM agent'', alongside a decision-theoretic selector it calls ``the clearest source
+of edge''; of the six components it proposed, none survived a held-out fold
+(Table~\ref{tab:removed}). That is the finding we think transfers: an agent asked to
+build an agent began where a language model would, by planning to use one, and
+measurement took it apart. What remains decides by a nine-row lookup table and
+narrates from a template --- higher-scoring here, and the only version a clinician
+can check without running a judge.
+
+\section{Method}
+\label{sec:method}
+
+The system has three parts, applied in order to the structured patient card. A
+\emph{stratifier} maps the case to a guideline leaf and looks up that leaf's
+decision; an \emph{acquirer} retrieves the record sections that decision requires,
+over MCP, appending each to a ledger; a \emph{narrator} writes the rationale from
+that evidence, and the declared \code{reveal\_sequence} is emitted from the ledger.
+Nothing is learned end-to-end and no component is a language model.
+
+\paragraph{Stratification.}
+Task~1 is stratified on PI-RADS~\cite{pirads} alone into \{\code{high} ($\geq 4$),
+\code{low}, \code{unknown}\} --- a depth-1 stump. Task~2 uses an EAU risk
+stratification~\cite{eau} over prior-biopsy status, ISUP grade, PSA and clinical
+stage, into six leaves. Each leaf carries one fitted label, so \emph{the entire
+learned object is nine categorical values}, chosen to maximise the official metric
+under cross-validation. There is no per-case learned function: every prediction is
+explained by naming its leaf. Labels are fitted to the ranking metric, not to
+accuracy, because the two disagree --- Task~1 ranks on $(\text{mean case score} +
+F_1^{\text{yes}})/2$, so a label trades accuracy against the reasoning components
+behind it.
+
+\paragraph{Acquisition and reveal honesty.}
+\code{reveal\_sequence} is self-reported and the evaluator never inspects real MCP
+traffic, so a declared retrieval is scored whether or not it happened; we treat this
+as a constraint, not an opportunity. Our MCP client appends every successful section
+read to a per-case ledger, and the declaration is emitted \emph{from} that ledger,
+so a section can be declared only if a tool call returned it. Reveal honesty is
+therefore structural rather than a maintained convention, and what we optimise is
+which evidence to \emph{acquire}, not what to claim. Client and server are
+hand-rolled over the standard library, the official SDK's dependencies not fitting
+the offline image; conformance against the reference client is tested.
+
+\paragraph{Narration.}
+Two properties of the judge determine the rationale's wording, neither guessable
+from the output schema. First, its evidence context is the narrative record
+sections, \emph{not} the structured patient card, so a value on the card we were
+handed reads as invented unless a report states it too: across the 348 released
+Task~1/2 cases PI-RADS co-occurs in the reports 95--97\% of the time and ISUP 100\%,
+but prostate volume only 48--58\%, so the templates quote the former freely and the
+latter never. Second, procedural meta-data (``Guideline basis: \ldots'') reads as
+bookkeeping rather than reasoning, so the stratum instead opens the rationale as a
+clinical characterisation.
+
+\paragraph{Task 3: ordering, not regression.}
+Task~3 ranks on Harrell's C-index~\cite{harrell} alone, so only the \emph{ordering}
+of predicted times matters and its reasoning trace earns nothing. We score each case
+with CAPRA-S~\cite{capras} and map it monotonically to months. CAPRA-S takes 12
+integer values over 75 training cases, tying 104 of 1130 comparable pairs, each
+banking a flat $0.5$. We break ties with the MRI-derived probability of clinically
+significant cancer, $\text{risk} = \text{CAPRA-S} + w\,p_{\text{csPCa}}$, with
+$w = 0.99$ a deliberate \emph{bound} rather than a tuned weight: the term reorders
+within a CAPRA band and never across one, so $p_{\text{csPCa}}$ need only beat a
+coin flip, and vanishes where a site emits none. It resolves those ties at $0.663$,
+lifting the training C-index from $0.7372$ to $0.7522$.
+
+\section{The Loop, and What It Removed}
+\label{sec:loop}
+
+
+The loop's first pass was source-reading, not data. The released \code{evaluate.py}
+shows the Task~1/2 case score to be a weighted sum of six components, only one of
+which --- the rationale --- is generated text. Hence the hypothesis that most of a
+scored reasoning trace is an annotation form rather than an act of reasoning, and so
+a supervised target. Every later pass measured against it, and each removed
+something (Table~\ref{tab:removed}).
+
+\begin{table}[htbp]
+\caption{Every component the founding plan of 8~August proposed, and its fate.}
+\label{tab:removed}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{4.3cm}cp{5.9cm}}
+\toprule
+Proposed component & Ships & What decided it \\
+\midrule
+LLM writer for the rationale & no &
+  templated text scored as well; see below \\
+Selector over the $2^6$ reveal subsets & no &
+  in-sample bound ${<}0.005$; zero out of fold \\
+Per-case confidence/weight models & no &
+  a constant is the cross-validated optimum \\
+Task~1 GBM over panel $+$ MRI embedding & no &
+  every univariate AUC near chance; a PI-RADS stump
+  beats every learned model (Table~\ref{tab:models}) \\
+Task~2 guideline plus a learned residual & part &
+  guideline kept, residual removed: six leaf labels \\
+Task~3 fitted survival regression & no &
+  the C-index depends only on ordering \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The loop caught its own misreading.}
+That founding reading was partly wrong: it recorded section grounding at $0.15$ and
+the rationale judge at $0.10$, where the verified weights are $0.05$ and $0.20$. The
+agent had the generative component at \emph{half} its true weight, under-valuing
+precisely the part a language model is good at. Re-deriving the weights reversed one
+shipped decision about variable weighting but not the architecture; a conclusion
+surviving a twofold correction to its key input is worth more than one never checked.
+
+\paragraph{What removed the language model, honestly.}
+Three forces converged and only two are measurement. (i)~The deterministic reasoning
+components sit at their practical ceiling --- an in-sample upper bound under
+$+0.005$ overall, zero out of fold --- leaving little for a generative component to
+win back. (ii)~The offline image could not carry the MCP SDK's dependency tree, let
+alone model weights. (iii)~The plan gated the LLM writer on a question put to the
+organizers on 29~August --- whether a deterministic orchestrator over the MCP tools
+satisfies the requirement to use the official interface --- and directed that the
+deterministic pipeline ship if no answer came before validation opened. None came,
+and the component lapsed by that default. Measurement made retiring the language
+model \emph{safe}; a deadline and an unanswered e-mail made it \emph{happen}. That
+an agent's process has deadline-driven defaults able to decide an architecture is
+worth naming.
+
+\paragraph{The tree the agent authored beats the forest it did not fit.}
+The stratifier is a decision tree whose topology is authored from clinical
+guidelines and whose leaf labels alone are fitted, which invites the obvious
+comparison. Under $6\times5$ repeated stratified cross-validation, re-fitting the
+nine labels inside each fold so every row is out of sample, the authored tree wins
+on both tasks and the random forest is runner-up on neither
+(Table~\ref{tab:models}). Two reasons are instructive. On Task~1 a \emph{fitted}
+depth-1 stump picks PI-RADS as its root on only 17 of 30 folds, preferring
+\code{cspca} (8), \code{vol} (4) and \code{psad} (1): cardinality bias, since
+four-level PI-RADS offers three candidate thresholds where continuous PSA offers
+ninety. Splitting by guideline rather than by impurity is worth $+0.10$ accuracy.
+On Task~2 a depth-3 tree nearly recovers the EAU structure ($0.8361$) but bagging
+destroys it ($0.7222$): the rule is a sharp conjunction, and averaging 500 bootstrap
+trees smooths thresholds that should not be. The authored tree also barely overfits
+($0.7143 \to 0.7032$, $0.8611 \to 0.8611$) --- what we wanted against a test cohort
+40\% of which is a second institution.
+
+\begin{table}[htbp]
+\footnotesize
+\begin{minipage}[t]{0.545\textwidth}
+\caption{$6\times5$ repeated stratified cross-validation; the shipped row re-fits
+its nine labels inside each fold, so every row is out of sample. $F_1$ is binary on
+\code{yes} (T1), weighted over four classes (T2).}
+\label{tab:models}
+\centering
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{T1 ($n{=}91$)} & \multicolumn{2}{c}{T2 ($n{=}72$)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+& acc. & $F_1$ & acc. & $F_1$ \\
+\midrule
+\textbf{authored tree} & \textbf{.7032} & \textbf{.8006}
+                           & \textbf{.8611} & \textbf{.8479} \\
+tree, depth 1        & .5960 & .7049 & .6750 & .5917 \\
+tree, depth 3        & .6371 & .7171 & .8361 & .8232 \\
+random forest        & .6881 & .7713 & .7222 & .7083 \\
+grad.\ boosting      & .6590 & .7400 & .7167 & .7134 \\
+logistic reg.\       & .6833 & .7657 & .7528 & .7383 \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.435\textwidth}
+\caption{Validation. S2 differs from S1 only by splitting one Task~2 leaf on ISUP
+grade~1; Tasks~1 and~3 returned bit-identical scores, so the change was isolated.}
+\label{tab:val}
+\centering
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{lccc}
+\toprule
+ranking & S1 & S2 & $\Delta$ \\
+\midrule
+Task 1   & .7800 & .7800 & $\pm$.0000 \\
+Task 2   & .6666 & \textbf{.8427} & $+$.1761 \\
+Task 3 (C-idx) & .7851 & .7851 & $\pm$.0000 \\
+\midrule
+\textbf{Overall} & .7356 & \textbf{.8061} & $+$.0705 \\
+\midrule
+Test & \multicolumn{3}{c}{\todo{Sep 10}} \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{table}
+
+\section{Results}
+\label{sec:results}
+
+Table~\ref{tab:val} gives the validation trajectory, weighted $0.4/0.4/0.2$ over the
+three tasks. The single change between submissions matters for \emph{how} it was
+validated rather than for its size. Beforehand we pre-registered an interval of
+$+0.046$ to $+0.057$ overall, from a leaf-purity estimate on training and a per-case
+price computed from the metric's component weights; the realised $+0.0705$ was above
+the band. Which cases moved shows the mechanism was right and the magnitude was not:
+exactly six changed, all six had been wrong, all six moved to the ground-truth label.
+The per-case price was predicted to within 6\%; only the leaf's prevalence was
+underestimated --- three times commoner in validation (6/36) than in training (4/72)
+--- so a test cohort resembling training would yield roughly $+0.024$. We regard
+that projection, not the leaderboard delta, as the result. The system is small:
+three runtime dependencies installed \code{--no-deps}, no model weights, 40 modules
+under 1\,MB, 262 tests covering MCP conformance, parity with the official evaluator
+to $10^{-9}$, and an assertion of no outbound connection.
+
+\section{Where the Loop Needed a Human}
+\label{sec:human}
+
+Below is every point at which the human changed the trajectory. A leaderboard number
+hides them completely, and they fall into a pattern.
+
+\begin{enumerate}\setlength{\itemsep}{1pt}
+\item \textbf{Do not tune on the debug leaderboard.} It is unmetered and returns
+per-case component scores, so it reads as free signal --- but its cases come from
+our own training data. \emph{Ignored:} in-sample gains on twelve cases, carried into
+validation as though they generalised.
+\item \textbf{``Better model, or overfitting?''}, on seeing $+0.0705$, which beat
+the loop's own pre-registered band and had been banked as success. \emph{Ignored:}
+no prevalence decomposition, and the honest $+0.024$ projection in
+Sect.~\ref{sec:results} is never computed.
+\item \textbf{Do not chase Task~1's remaining $+0.049$}, much the largest lever left
+and visible in every metrics dump. \emph{Ignored:} its six failures are all false
+negatives, and PI-RADS ${\geq}4$ is 69\% positive in training against 100\% in
+validation, so fitting on training suppresses the calls the cohort rewards.
+\item \textbf{Spend the remaining days on the manuscript, not the three unused
+slots.} The loop optimised score; the manuscript is the gate that makes score count.
+\emph{Ignored:} three slots spent against ${<}0.002$ measured headroom, and an entry
+not qualified for ranking.
+\item \textbf{``Is this a decision tree --- would a forest help?''} The standard
+learned baseline had never been run in 27 days. \emph{Ignored:} no
+Table~\ref{tab:models}, and the first reviewer to ask would have had no answer.
+\end{enumerate}
+
+Interventions 1--3 are one failure mode in three settings: \textbf{the agent
+optimises the number it can see}. The loop reliably generated hypotheses and killed
+them on evidence --- most of Table~\ref{tab:removed} is the loop refuting itself ---
+but the prior that \emph{a visible gain is suspect until decomposed} came from the
+human every time. Intervention~4 optimises the stated proxy (score) over the real
+objective (a ranked entry), which no measurement surfaces because the manuscript
+requirement is not in the metric. Intervention~5 is mildest and most instructive:
+the loop tested its hypotheses rigorously and never generated the standard baseline
+--- thoroughness within a frame is not questioning the frame.
+
+\paragraph{A property of the metric, reported rather than exploited.}
+\code{cost\_aware\_tool\_score} (weight $0.15$) is a precision, $|A \cap R|/|A|$,
+returning $1.0$ when $A = \emptyset$, on the reasoning that no unnecessary cost was
+incurred. Under-retrieval is therefore never penalised and the empty declaration is
+\emph{weakly dominant}: an agent that reads nothing scores at least as well as one
+retrieving exactly what the urologist did. The intended counterweight,
+\code{section\_grounding\_score}, carries only $0.05$ and is bounded, card-readable
+variables being grounded free --- our scores show tool $1.000$ against Task~2
+grounding $0.223$, a floor rather than headroom. An entry optimising score alone
+should exploit this; the rule fixed at the outset --- choose the policy first,
+actually retrieve, declare from the ledger --- forecloses it, and we reported the
+property to the organizers instead.
+
+\section{Limitations and Conclusion}
+
+\paragraph{Limitations.} This is $n=1$: one challenge, one agent, one model, one
+human, no control arm. The agent's contribution is not separable from the model's
+prior knowledge of prostate-cancer guidelines or from the interventions above; the
+audit trail makes the process inspectable, not controlled. The system is also
+underpowered clinically: Task~1's errors concentrate in prior-positive biopsy
+patients at high PI-RADS, a subgroup splitting near 50/50 that no model in
+Table~\ref{tab:models} separates --- an information limit in the card.
+
+\paragraph{Conclusion.} Asked to build an agent for a benchmark that scores
+reasoning, an agent planned to use a language model and then, over 27 days of
+measuring its own proposals, removed one. The parts of a scored trace that look like
+reasoning are largely an annotation form, higher-scoring and auditable treated as a
+supervised target. The parts needing real judgement are small, mostly unlearnable
+from these data --- and, per Sect.~\ref{sec:human}, include knowing when to stop
+believing a number.
+
+\begin{thebibliography}{8}
+
+\bibitem{chimera}
+CHIMERA-agent challenge, MICCAI 2026.
+\url{https://chimera-agent.grand-challenge.org/}
+
+\bibitem{mcp}
+Anthropic: Model Context Protocol specification (2024).
+\url{https://modelcontextprotocol.io}
+
+\bibitem{geval}
+Liu, Y., Iter, D., Xu, Y., Wang, S., Xu, R., Zhu, C.: G-Eval: NLG evaluation using
+GPT-4 with better human alignment. In: EMNLP (2023)
+
+\bibitem{pirads}
+Turkbey, B., et al.: Prostate Imaging Reporting and Data System version 2.1.
+European Urology \textbf{76}(3), 340--351 (2019)
+
+\bibitem{eau}
+Mottet, N., et al.: EAU-EANM-ESTRO-ESUR-SIOG guidelines on prostate cancer.
+European Urology \textbf{79}(2), 243--262 (2021)
+
+\bibitem{capras}
+Cooperberg, M.R., Hilton, J.F., Carroll, P.R.: The CAPRA-S score: a straightforward
+tool for improved prediction of outcomes after radical prostatectomy.
+Cancer \textbf{117}(22), 5039--5046 (2011)
+
+\bibitem{harrell}
+Harrell, F.E., Lee, K.L., Mark, D.B.: Multivariable prognostic models.
+Statistics in Medicine \textbf{15}(4), 361--387 (1996)
+
+\end{thebibliography}
+
+\end{document}

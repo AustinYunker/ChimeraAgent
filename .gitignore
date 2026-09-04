@@ -72,6 +72,18 @@ paper/*.out
 paper/*.toc
 paper/*.pdf
 paper/*.synctex.gz
+paper2/llncs.cls
+paper2/llncs.dem
+paper2/llncsdoc.pdf
+paper2/splncs04.bst
+paper2/*.aux
+paper2/*.bbl
+paper2/*.blg
+paper2/*.log
+paper2/*.out
+paper2/*.toc
+paper2/*.pdf
+paper2/*.synctex.gz
 
 # --- Platform artefacts pulled down by hand ----------------------------------
 # Leaderboard metrics dumps, the debug-submission screenshot and its details
