@@ -1,0 +1,180 @@
+% DRAFT -- new section, not yet included in main.tex.
+%
+% Requested Sep 6: "a dedicated section on what was gained by having a fully
+% agent-driven design loop", covering the cost_aware_tool_score finding, the
+% leaderboard-forensics capability, and anything else relevant.
+%
+% Written without regard to the page limit, per instruction.  Measured, not
+% estimated: \input{} before Sect. 5 takes the body from 6 pages to 8, with
+% references then spanning p9-p10.  Compiles with 0 errors and 0 unresolved
+% references.  See the note at the foot of this file for integration options.
+%
+% Every number below was recomputed from val_metrics_S2.json and
+% best_val_metrics_sep_6.json on Sep 6 and is reproducible from those two
+% files; neither is committed (both are gitignored -- see .gitignore).
+
+\section{What the Loop Bought}
+\label{sec:gained}
+
+Section~\ref{sec:human} is an inventory of the loop's failures, and read alone it
+argues for a human. This section is its counterweight: four things the loop did that
+we do not think a conventionally-run entry would have done, not because a human
+could not do them, but because each has a cost profile that an agent changes. We
+state the asymmetry in each case rather than claiming a capability.
+
+\paragraph{It read the scorer instead of sampling it.}
+The released \code{evaluate.py} is roughly 1{,}300 lines. The loop's first act was to
+read all of it and derive the case score's six weights, the ranking formula, and the
+gate semantics from source --- before running a single experiment. Two of the
+design's load-bearing decisions follow directly from that read and from nothing else:
+that $0.75$ of the case score is deterministic given the decision, which is what
+makes a template competitive with a language model; and that Task~3's ranking score
+is the C-index \emph{alone}, so its rationale is unscored. The second is worth
+stating concretely, because it is the kind of thing a leaderboard cannot teach you:
+our Task~3 rationale scores $0.2739$ against the public leader's $0.6565$, and the
+difference is worth exactly zero. An entry that had inferred the metric from
+submissions would have spent slots discovering this. The asymmetry is not insight
+but \emph{tedium tolerance}: reading 1{,}300 lines of scoring code carefully enough
+to trust a claim about component weights is a task humans reliably skim and agents
+reliably do not.
+
+That same read produced the \code{cost\_aware\_tool\_score} finding reported in
+Sect.~\ref{sec:human}, and the validation
+metrics let us confirm it against an independent entrant rather than only by
+argument: across all 86 Task~1 and~2 validation cases, both our entry and the
+public leader score \code{mean\_tool\_score} of exactly $1.0000$. A component
+carrying $0.15$ of the case score --- the third-largest weight --- separates the top
+two entries by nothing at all, which is what a precision with $|A| = \emptyset$
+mapped to $1.0$ predicts. We reported the property to the organizers rather than
+exploiting it, and note here only that it is measurably non-discriminative, not
+merely theoretically so.
+
+\paragraph{It could do forensics on a competitor's public metrics.}
+The platform publishes per-case component scores for leaderboard entries. When the
+top entry stood at $0.8719$ against our $0.8061$, the loop decomposed the $0.0658$
+gap in a single pass --- 109 cases, six components, restricted to the cases both
+systems' gates passed so the comparison is like-for-like. The result reframed the
+remaining work:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{lccc}
+\toprule
+& Task 1 & Task 2 & Task 3 \\
+\midrule
+gap in ranking score        & $.0512$ & $.0802$ & $.0661$ \\
+$\times$ task weight        & $.0205$ & $.0321$ & $.0132$ \\
+\midrule
+\emph{of which} reasoning trace & $.0035$ & $.0107$ & $.0000$ \\
+\emph{of which} decision / ordering & $.0170$ & $.0214$ & $.0132$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Seventy-eight per cent of the gap to the leader is decisions and ordering;
+$22\%$ is the reasoning trace} --- although the trace carries $0.75$ of the case
+score. This is the paper's thesis measured against another team's system rather than
+our own, and it is the strongest form of the claim we can make: the trace is largely
+a supervised target that a careful template saturates, and the residual difficulty
+is in the decisions.
+
+The per-case view sharpened it further. On Task~1 the leader's four errors are a
+strict \emph{subset} of our six; all six are the same failure, a ground truth of
+\code{yes} called \code{no}; and on the 44 cases both gates passed, our total
+reasoning deficit is $0.0197$ of case score, of which we are actually \emph{ahead} on
+section grounding ($0.6959$ against $0.6291$). Two biopsy calls out of fifty separate
+the two entries on Task~1. On Task~2 the reasoning gap is real but concentrated:
+$0.0565$, of which confidence conditioning is $0.0206$ --- the one component where a
+constant, cross-validated optimum on our training cohort is visibly beaten on
+validation.
+
+We want to be exact about what this changed, because the tempting claim is the wrong
+one. It supplied no method: the S3 change described in Sect.~\ref{sec:method} was
+derived from our own training labels, and we deliberately did not read the leader's
+predicted orderings. What it supplied was evidence that a frame the loop had
+\emph{closed} was still open. Internal notes had written Task~3 off --- ``nothing to
+learn per slot'' --- and the decomposition showed a $0.0661$ C-index gap there, which
+is not a statement about our tie-break but about ordering information we were not
+using at all. That prompted the re-examination that found PI-RADS. The distinction
+matters for anyone repeating this: competitor metrics were useful as a
+\emph{falsifier of our own beliefs about saturation}, and would have been actively
+harmful used as a target.
+
+\paragraph{A hazard, reported rather than used.}
+The same dumps carry a defect. Judge feedback is published verbatim in a
+\code{reason} field, and because the judge quotes the entrant's rationale back, those
+strings contain clinical quantities from the validation cases: $104$ of $109$ quote
+at least one PI-RADS, ISUP, PSA or volume value. Validation inputs are therefore
+partially reconstructable from a public leaderboard artefact, and an entry willing to
+do so could fit on the validation cohort directly. We did not, and we reported it
+alongside the \code{cost\_aware\_tool\_score} property. Both findings have the same
+shape --- an agent reading the platform closely enough to find the exploit is also
+the thing that can report it --- and we think an agent-run entry has a
+\emph{heightened} obligation here, because the marginal cost of noticing such things
+is what dropped.
+
+\paragraph{It refuted its own measurements.}
+The loop's most valuable single act was catching a bug in its own harness. Comparing
+survival models for Task~3, an $L_2$ Cox fitted on CAPRA-S alone scored $0.7249$
+against raw CAPRA-S's $0.7372$ --- impossible, since a fitted monotone re-expression
+of one variable cannot reorder it. The cause was that pooled out-of-fold
+concordance is invalid for refitted models: each fold's coefficients carry their own
+scale, so a cross-fold pair compares two rulers. Restricting to within-fold pairs and
+pooling numerator and denominator brought the two into exact agreement at $0.7373$
+and changed every fitted-model number in the comparison. A second instance: the
+shipped map is $\max(1.0, 120 - s\,\cdot\,\text{risk})$, and at the inherited
+$s = 8$ the new PI-RADS term pushed nine of 75 cases onto the clamp, where they tie
+and the C-index banks $0.5$ on each --- costing $0.0107$, invisible in any aggregate.
+Neither was found by a test. Both were found by treating an implausible number as a
+defect rather than as noise, which is the discipline Sect.~\ref{sec:human} shows the
+loop lacked about \emph{favourable} numbers. The asymmetry is instructive on its own:
+the loop interrogated results that looked wrong and banked results that looked good.
+
+\paragraph{Pre-registration became free.}
+Every validation slot in this campaign carries an interval stated in a committed
+document \emph{before} the submission --- S2's $+0.046$ to $+0.057$, S3's $+0.004$ to
+$+0.013$ with a named floor of exactly $0.0000$ --- together with the one variable
+changed and the residual risk. This is ordinary good practice that entries rarely
+follow, and the reason is cost: writing it down is a separate task competing with the
+work. For an agent the artefact is a byproduct of the working process rather than an
+overhead on it. The value showed up immediately: S2 came in \emph{above} its band at
+$+0.0705$, and because the band existed, the overshoot was legible as a question
+rather than a success, which is what produced the prevalence decomposition and the
+honest $+0.024$ projection in Sect.~\ref{sec:results}. A result cannot surprise you
+if you never said what you expected.
+
+\paragraph{What this does not show.}
+None of the above is a controlled comparison. We ran one entry, with one model, one
+human and no control arm, and each claim above is of the form ``this happened, and
+its cost profile explains why it is rare'' --- not ``an agent will do this.'' The
+honest summary is narrower than the section heading: the loop was good at exhaustive,
+low-glamour reading; at decomposition when pointed at data; at doubting numbers that
+looked wrong; and at producing the paper trail that makes those things checkable. It
+was bad, per Sect.~\ref{sec:human}, at doubting numbers that looked right, and at
+noticing which frame it was working inside. Those are close to complements, and we
+suspect the pairing is not accidental: the same disposition that reads all 1{,}300
+lines of the scorer is the one that keeps optimising within the frame the scorer
+implies.
+
+% ---------------------------------------------------------------------------
+% INTEGRATION NOTE
+%
+% main.tex is exactly six body pages with references starting on p7; this
+% section measures 2.0 pages, so it cannot simply be \input{}.  Three options:
+%
+% 1. Merge into Sect. 5, retitled "Where the Loop Needed a Human, and What It
+%    Bought".  Costs the most cutting but is the strongest structure: the two
+%    lists are complements and the closing paragraph above already argues so.
+% 2. Keep as its own section and cut for space.  The compressible parts are
+%    the pre-registration paragraph (~0.25pp, argued rather than measured)
+%    and the forensics prose after the table (~0.3pp).  The table and the
+%    78/22 split should not be cut -- that is the thesis measured against an
+%    independent system.
+% 3. Hold for the extended version, and land only the 78/22 table in Sect. 4,
+%    which costs ~0.35pp and carries most of the value.
+%
+% Note also: if this section ships, Sect. 5's closing sentence calling
+% intervention 5 "mildest and most instructive" needs rewording, and the
+% still-open question of whether the PI-RADS finding is a sixth intervention
+% is partly answered here -- it appears above as the frame-reopening example.
