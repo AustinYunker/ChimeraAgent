@@ -49,13 +49,14 @@ MIN_ROWS_FOR_CONDITIONAL_FIT = 8
 #: C-index, so this is an arbitrary decreasing map chosen to stay in a plausible
 #: clinical range and to keep `months_to_recurrence` positive and finite.
 #:
-#: The slope is *not* free, because the map is clamped at one month. At 8.0 the
-#: PI-RADS term below pushed nine of the 75 cases onto the clamp, where they tied
-#: and the C-index banked 0.5 on each: 0.7965 fell to 0.7858. 6.0 keeps the whole
-#: cohort off the floor (6.7 to 111.2 months) and costs nothing else, since the
-#: slope cannot otherwise change an ordering.
+#: Back at 8.0 with the PI-RADS term withdrawn (see below). The slope moved to 6.0
+#: only because that term pushed nine of 75 cases onto the one-month clamp, where
+#: they tied; without it the maximum risk is 12.99 and nothing reaches the clamp at
+#: either slope, so the two are ordering-identical here. 8.0 is restored because it
+#: is the value the 0.7851 validation measurement was taken at, and an untested
+#: deviation is not worth taking into a one-shot submission for no gain.
 MONTHS_AT_ZERO_RISK = 120.0
-MONTHS_PER_CAPRA_POINT = 6.0
+MONTHS_PER_CAPRA_POINT = 8.0
 
 #: Weight on the MRI's AI-predicted probability of clinically significant cancer,
 #: added to CAPRA-S to order cases the nomogram cannot separate.
@@ -87,89 +88,47 @@ MONTHS_PER_CAPRA_POINT = 6.0
 #: available gain is the only half taken. See ``docs/plan.md``.
 CSPCA_TIEBREAK_WEIGHT = 0.99
 
-#: Weight on PI-RADS, added to CAPRA-S as `PIRADS_RISK_WEIGHT * (pirads - 2)`.
+#: **Withdrawn after S4. Kept as a record, not as a prediction path.**
 #:
-#: Unlike the csPCa term this is *not* a bounded tie-break -- it can move a case
-#: across several CAPRA-S points -- so it needs a stronger justification, and it
-#: has one. CAPRA-S is pathology-only and ignores imaging entirely, yet on the 75
-#: released cases PI-RADS separates the cohort more sharply than the nomogram does:
-#: all 19 recurrences sit in PI-RADS 4-5, 16 of them in PI-RADS 5, and the ten
-#: PI-RADS 2-3 cases contain no event at all. It is not redundant with `cspca`
-#: either -- once PI-RADS is in the score, adding `cspca` on top is worth +0.0005.
+#: The term added `2.0 * (pirads - 2)` to the risk score, on the strength of a
+#: clean separation in the 75 released cases: all 19
+#: recurrences at PI-RADS 4-5, 16 at 5, and no event at all among the ten PI-RADS
+#: 2-3 cases. Out of fold it was the best-supported Task 3 change of the campaign
+#: -- 0.7522 -> 0.7965 pooled over 20 seeds x 5 folds, paired-bootstrap 95% CI
+#: [+0.0015, +0.1007], the only one whose interval excluded zero.
 #:
-#: The value is a scale choice, not a fitted one. PI-RADS spans 2-5, so weight 2
-#: gives the term a 6-point range against CAPRA-S's 0-12: comparable authority, not
-#: dominant. The in-sample C-index is flat from 2 to 4 (0.7965, 0.7996, 0.8000),
-#: far inside the seed spread, and weight 2 is the one that keeps predicted months
-#: clinically plausible. PI-RADS is parsed on 75/75 from a report already retrieved.
-#: A case whose report omits it is handled by :data:`PIRADS_MISSING`, *not* by
-#: skipping the term -- see there; the first shipped version skipped it and that
-#: is what cost the S3 validation slot.
+#: It does not transfer. Two validation slots were spent finding out:
 #:
-#: Pooled out-of-fold over 20 seeds x 5 folds, refit in fold, scored with the
-#: official `concordance_index`: 0.7522 -> 0.7965, +0.0442 (sd 0.0199 across seeds).
-#: A hand-rolled L2 Cox given the same three inputs reaches 0.7962 -- fitting the
-#: coefficients buys nothing over choosing them. Paired bootstrap over 4000
-#: resamples: +0.0450, 95% CI [+0.0015, +0.1007], P(gain) 0.98. This is the first
-#: Task 3 change whose interval excludes zero.
-PIRADS_RISK_WEIGHT = 2.0
-
-#: The lowest PI-RADS in the cohort, so the term contributes nothing at PI-RADS 2
-#: and the score stays on roughly the CAPRA-S scale.
-PIRADS_REFERENCE = 2
-
-#: PI-RADS assumed when the radiology report does not state one.
+#: ======  ===========================  =========  ==========
+#: slot    configuration                Task 3 C   vs S2
+#: ======  ===========================  =========  ==========
+#: S2      no PI-RADS term              0.7851     --
+#: S3      w=2, missing skipped         0.6281     -0.1570
+#: S4      w=2, missing -> median 5     0.7438     -0.0413
+#: ======  ===========================  =========  ==========
 #:
-#: **This is the correction to S3, and the reason it is not simply "skip the term".**
-#: Skipping is not neutral. The term is added to a scale every *other* case is also
-#: scored on, so contributing nothing is indistinguishable from contributing
-#: `PIRADS_REFERENCE` -- it asserts the lowest MRI risk in the cohort about a case
-#: whose MRI risk is unknown. Under *uniform* absence that is harmless, because every
-#: case shifts alike and the ordering is unchanged; under *partial* coverage the two
-#: groups sit on incompatible scales and the unknowns sink to the bottom.
+#: S3's loss was two separate defects compounding, and only one of them was the
+#: missingness bug S4 fixed by imputing the training median. That recovered +0.1157,
+#: in the predicted direction -- but on the 20 validation cases that genuinely carry
+#: PI-RADS, the term is *itself* negative: 0.8875 -> 0.7500. The separation is the
+#: thing that failed. Validation has an early recurrence at PI-RADS 2 (12.5 months),
+#: which training's 19 events contained no instance of; with only 7 validation events
+#: that single case flips the term's sign, from +0.0800 excluding it to -0.0413
+#: including it.
 #:
-#: All 75 released cases carry PI-RADS, so training cannot exhibit this directly --
-#: but it can be simulated, and the simulation is unambiguous. Dropping PI-RADS from
-#: a random 26% of the training cases (matching validation's 17/23 coverage), 400
-#: draws, pooled out-of-fold C-index against the 0.7522 no-term baseline:
+#: The lesson worth keeping is about the evidence, not the variable. "All 19
+#: recurrences sit at 4-5" reads as overwhelming and is not: it is one cohort's
+#: worth of a pattern with no counterexample *yet*, and the out-of-fold protocol
+#: could not price that, because every fold drew from the same separation. A wide
+#: bootstrap interval that merely excludes zero was the visible warning.
 #:
-#: ===========  ==========  ======  ======  ==================
-#: missing ->   weight      mean    p05     P(worse than none)
-#: ===========  ==========  ======  ======  ==================
-#: reference    0.5         0.7591  0.7319  34%
-#: reference    1.0         0.7599  0.7142  39%
-#: reference    2.0         0.7441  0.6752  **52%**
-#: median (5)   0.5         0.7646  0.7575  0%
-#: median (5)   1.0         0.7763  0.7646  0%
-#: median (5)   2.0         0.7840  0.7681  0%
-#: ===========  ==========  ======  ======  ==================
-#:
-#: At the shipped weight the reference encoding was a coin flip to lose outright, and
-#: validation duly returned 0.6281 -- inside that distribution's lower tail. Note what
-#: the table also says: **bounding the weight is not the fix.** Even at 0.5, where the
-#: term can only reorder within a CAPRA-S band, the reference encoding still loses a
-#: third of the time. The defect is the asserted value, not its magnitude, so the
-#: weight above is left untouched.
-#:
-#: The value is the training median. PI-RADS is *ordinal*, so the median is the
-#: admissible central statistic and the mean (4.307) is not a value the scale takes;
-#: training cannot separate the two anyway (0.7840 vs 0.7844, median with the better
-#: p05).
-#:
-#: Be clear about what that median is, because "impute the median" sounds milder than
-#: it is here: the cohort is 2:5, 3:5, 4:27, 5:38, so the median is 5 -- the *top* of
-#: the scale. An unimaged case therefore ties the largest group rather than sitting at
-#: a midpoint. That is intended. Only ordering is scored, and tying the plurality is
-#: the minimum-information placement; the alternative on offer was the floor.
-#:
-#: Residual risk, named: the median is cohort-dependent, and a test institution with a
-#: different PI-RADS distribution has a different central value -- and because this
-#: median sits at the scale boundary, a *less* florid cohort can only move it down,
-#: which would place unknowns too high. That risk is still strictly smaller than the
-#: one it replaces: mis-imputing the central value is wrong by however far the two
-#: cohorts' centres differ, whereas imputing the reference is wrong by the full range
-#: of the term, in the same direction, for every affected case.
-PIRADS_MISSING = 5
+#: Do not reinstate at a smaller weight on the strength of the validation sweep.
+#: w=0.25 scores 0.8017 there and w=0.5 scores 0.7934, both above S2 -- but the
+#: sweep is non-monotone across w (0.8017, 0.7934, 0.7934, 0.7438, 0.7603, 0.7438),
+#: which is what noise on 7 events looks like, not an optimum. Picking from it is
+#: fitting to the validation cohort, which is what the S3 pre-registration ruled
+#: out in advance.
+PIRADS_WITHDRAWN_AFTER = "S4"
 
 
 # --------------------------------------------------------------------------- #
@@ -513,19 +472,16 @@ def predict_record(
 # --------------------------------------------------------------------------- #
 
 def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
-    """Predicted months to recurrence, ordered by CAPRA-S plus the two things the
-    nomogram ignores: the MRI's csPCa probability and PI-RADS. Nothing is fitted --
-    every constant is chosen, not learned.
+    """Predicted months to recurrence, ordered by CAPRA-S with the MRI as a
+    tie-breaker. Nothing is fitted -- both constants are chosen, not learned.
 
     The csPCa term is bounded below one CAPRA-S point by construction, so it only
     orders cases the nomogram scores equally; see :data:`CSPCA_TIEBREAK_WEIGHT`.
     Skipping it when absent is safe *because* of that bound: the omission is worth
-    less than one CAPRA-S point however many cases it affects.
-
-    The PI-RADS term is a real reordering and carries the larger gain; see
-    :data:`PIRADS_RISK_WEIGHT`. It is unbounded, so the same reasoning does **not**
-    transfer, and a missing value is imputed rather than skipped -- see
-    :data:`PIRADS_MISSING` for why, and for what skipping it cost.
+    less than one CAPRA-S point however many cases it affects. That is the whole
+    difference between this term and the withdrawn PI-RADS one, which was unbounded
+    and where absence therefore could not be skipped safely -- see
+    :data:`PIRADS_WITHDRAWN_AFTER`.
     """
     pathology = extract_reports(store)
     score = capra_s(pathology, extract_structured(case, store).psa)
@@ -533,8 +489,6 @@ def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
         return FALLBACK_MONTHS
     if pathology.cspca is not None:
         score += CSPCA_TIEBREAK_WEIGHT * pathology.cspca
-    pirads = PIRADS_MISSING if pathology.pirads is None else pathology.pirads
-    score += PIRADS_RISK_WEIGHT * (pirads - PIRADS_REFERENCE)
     months = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * score
     return max(1.0, months)
 

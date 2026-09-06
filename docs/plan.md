@@ -554,7 +554,19 @@ eight decimals — and `T2-001`'s card carries `bx_isup 1, bx_gl_prim 3, bx_gl_s
 only occurrence of that grade in the whole 12-case batch. One case's record is being
 attributed to another case's output within a single submission.
 
-### Item 11 — Task 3 orders on PI-RADS too ✅ *Sep 6: +0.0443 on Task 3, +0.0089 overall*
+### Item 11 — Task 3 orders on PI-RADS too ❌ *Sep 6: shipped, then withdrawn after S4*
+
+> **Withdrawn.** Everything below is the case for the term as it was made, and it
+> was the best-supported Task 3 change of the campaign by every measurement
+> available at the time. Validation refuted it across two slots — S3 0.6281, S4
+> 0.7438, against S2's 0.7851 — and the term was reverted. The separation in the
+> table below is the thing that failed: validation has an early recurrence at
+> PI-RADS 2, which training's 19 events contained no instance of, and on the 20
+> validation cases that genuinely carry PI-RADS the term is negative (0.8875 →
+> 0.7500). See `docs/validation-staging.md` "S4 result" for the full account and
+> `stratified.PIRADS_WITHDRAWN_AFTER` for the lesson kept in the code. The bounded
+> `cspca` tie-break of Item 7 is unaffected and still ships.
+
 
 Item 7 improved the *tie-break* and then wrote Task 3 off — `docs/validation-staging.md`
 listed it under "deliberately not being validated", on the grounds that "nothing to

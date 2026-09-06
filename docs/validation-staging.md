@@ -483,6 +483,14 @@ the safeguard, and it was the defect.
   recurrences: T3-078 (12.5 mo), T3-081 (19.1 mo), T3-084 (20.5 mo).
 - Restricted to the 17 like-for-like cases, **S3 is better: 0.8868 → 0.9057**.
 
+> **All three of those bullets are false.** They are left standing because the S4
+> pre-registration below was built on them and cannot be read without them. S4's
+> third run supplies the bit that separates "absent" from "genuine PI-RADS 2" —
+> both add exactly zero to the S3 risk, so S3 alone cannot tell them apart, and
+> this diagnosis silently read every zero as absence. The true figures are 20/23
+> coverage, 2 of 7 events in the missing group, and a like-for-like C-index that
+> moves the *other* way. See "the correction" under the S4 result.
+
 So the ordering hypothesis was right and the encoding of absence was wrong. Skipping
 the term is not neutral, because the term is added to a scale every *other* case is
 also scored on: contributing nothing is indistinguishable from contributing the
@@ -570,6 +578,89 @@ will have before then.
 *Fallback, decided in advance.* If S4 does not clear 0.7851 on Task 3, the test
 submission ships the **S2 ordering** — CAPRA-S + csPCa, no PI-RADS term — which is
 known at 0.7851 and costs nothing to revert to. S5 remains the dress rehearsal.
+
+#### S4 result — Sep 6, `val_metrics_S4.json`. The term is withdrawn.
+
+Isolation held a third time: Tasks 1 and 2 returned bit-identical scores again.
+
+| | S2 | S3 | S4 |
+|---|---|---|---|
+| Task 3 C-index (= ranking score) | **0.7851** | 0.6281 | 0.7438 |
+| overall | **0.8061** | 0.7747 | 0.7978 |
+
+The imputation worked and was worth **+0.1157**, in the predicted direction and of
+roughly the predicted size. It was not enough, because it was fixing the smaller of
+two faults. 0.7438 is below the pre-registered floor of 0.7851, so **the fallback
+fires and Task 3 reverts to the S2 ordering** — CAPRA-S + csPCa tie-break, no
+PI-RADS term. That is what ships to test.
+
+*The correction to the S3 diagnosis.* Three runs identify what two could not.
+Reconstructing each case's term from `pred_months` as before — `risk_S4 =
+(120 − m₄)/6`, `term_S4 = risk₄ − risk₂` — a case with `term_S3 = 0` is **absent** if
+`term_S4 = 6` (imputed 5, so 2·(5−2)) and **genuinely PI-RADS 2** if `term_S4 = 0`
+as well. S3 alone collapses those two into one observation, and the S3 diagnosis read
+every zero as absence. The reconstruction reproduces all three reported C-indices
+exactly, so the corrected per-case inputs are:
+
+- **20 of 23 cases carry PI-RADS, not 17.** Only **3** are truly missing (T3-081,
+  T3-084, T3-093). The other three zeros are real PI-RADS 2 (T3-077, T3-078, T3-079).
+- Coverage is `{2: 3, 3: 1, 4: 9, 5: 7, absent: 3}` — **2** of the 7 events are in the
+  missing group, not 3.
+- **The like-for-like claim reverses.** On the 20 genuinely-covered cases (80
+  comparable pairs), adding PI-RADS moves the C-index **0.8875 → 0.7500, −0.1375**.
+  The S3 diagnosis reported +0.0189 on a set that was partly the wrong cases.
+
+So the ordering hypothesis was **not** right. The missingness bug was real and its fix
+was worth what it was expected to be worth, but a correct encoding of absence cannot
+rescue a term that is negative where it is fully observed.
+
+*What the term was actually resting on.* The training justification was a separation:
+all 19 recurrences at PI-RADS 4–5, no event among the ten PI-RADS 2–3 cases. Validation
+has an event at PI-RADS 2 — **T3-078, recurrence at 12.5 months, the earliest in the
+cohort** — and the term ranks it 15th of 23. One case carries the whole result:
+
+| | S2 | S4 | Δ |
+|---|---|---|---|
+| all 23 | 0.7851 | 0.7438 | −0.0413 |
+| dropping T3-078 | 0.7800 | 0.8600 | **+0.0800** |
+
+That is the honest description of the evidence. "All 19 recurrences" was one cohort's
+worth of a pattern with no counterexample *yet*, and the out-of-fold protocol could not
+price it because every fold drew from the same separation. The visible warning was the
+bootstrap CI, `[+0.0015, +0.1007]`: an interval that excludes zero only barely, and is
+wide relative to its own centre, is reporting that the estimate rests on few events —
+not that the effect is established. It was read as the former and reported as the
+latter.
+
+*The temptation, refused.* Sweeping the weight on validation (missing → 5) gives:
+
+| w | 0.25 | 0.5 | 0.75 | 0.99 | 1.5 | 2.0 | 3.0 |
+|---|---|---|---|---|---|---|---|
+| Task 3 | **.8017** | .7934 | .7934 | .7438 | .7603 | .7438 | .7355 |
+
+w = 0.25 clears S2 by +0.0166. It is not selected and the term is not reinstated at a
+smaller weight. The sweep is **non-monotone** — .7934 at 0.75 down to .7438 at 0.99
+back up to .7603 at 1.5 — which is the signature of a handful of pair flips on 7 events,
+not of an optimum. Fitting a weight to the 23 validation cases and then submitting it to
+test is the exact overfit these slots exist to detect, and the S3 pre-registration
+already committed the rule: *a result outside the interval is information about the
+cohort, not a licence to re-fit the weight.* That applied when the result was worse than
+predicted, and it applies now that a re-fit would look better.
+
+*What reverts, and what is kept.* `MONTHS_PER_CAPRA_POINT` goes back to 8.0 — it moved
+to 6.0 only because the PI-RADS term pushed nine cases onto the one-month clamp, and
+with that term gone the two slopes are ordering-identical here. The rationale's PI-RADS
+sentence is removed with the term: describing a step that no longer runs is the reveal
+dishonesty this project has committed against. What is kept is the record — the
+constants block is replaced by a withdrawal note, and a test asserts PI-RADS has no
+effect on the ordering, so the term cannot come back by accident.
+
+*Cost of the episode.* Two of five validation slots (S3, S4) for a net Task 3 change of
+zero, plus the S2 ordering re-confirmed as the best known. Bought with them: the
+coverage-simulation invariant from S3, and the sharper one here — **a separation with no
+counterexample in one cohort is a hypothesis, and a bootstrap interval that merely
+excludes zero does not upgrade it.** One slot remains. S5 is the dress rehearsal and is
+not spent on Task 3.
 
 ### S5 — dress rehearsal, Sep 8. The exact frozen test artefact.
 
