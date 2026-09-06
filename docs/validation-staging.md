@@ -675,8 +675,22 @@ why it is not scheduled for Sep 9.
 
 #### S5 pre-registration — Sep 6, `v0.6.2`, commit `44c094a`
 
-*The artefact.* Tag `v0.6.2`. Task 3 reverted to the S2 ordering; Tasks 1 and 2
-untouched since S2. This is the configuration that goes to test, frozen here.
+*The artefact.* Tag `v0.6.2`, commit `44c094ad3793681dbd083382365132b4f9df3515`.
+Task 3 reverted to the S2 ordering; Tasks 1 and 2 untouched since S2. This is the
+configuration that goes to test, frozen here.
+
+Built by `build-image` run #11, conclusion **success**, which means the image built,
+the smoke test ran one container per fixture case offline and non-root under Grand
+Challenge's mounts, and the in-image assertion found both fitted parameter files
+reachable. The artifact is **`chimera-agent-44c094ad3793`** (52,991,758 bytes,
+created 2026-09-06T22:41:31Z, retained to 2026-10-06), at
+`https://github.com/AustinYunker/ChimeraAgent/actions/runs/34064715884`.
+
+The artifact name embeds the commit SHA, which is the only link in the chain this
+host can check: downloading and unpacking the tarball to compare it against the
+source needs a container runtime we do not have, and the download itself needs a
+credential. So the name is verified against `git rev-parse HEAD` and the rest is
+what S5 exists to test.
 
 *The prediction, and it is a point rather than an interval.* Every earlier slot
 predicted a band because the model had changed. This one has not. Against `v0.5.0`
