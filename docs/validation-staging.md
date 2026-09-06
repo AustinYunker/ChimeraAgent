@@ -673,6 +673,43 @@ nothing to spend a slot on a submission we already expect to score well.
 If S5 fails, there are two days and the debug phase to recover in, which is exactly
 why it is not scheduled for Sep 9.
 
+#### S5 pre-registration — Sep 6, `v0.6.2`, commit `44c094a`
+
+*The artefact.* Tag `v0.6.2`. Task 3 reverted to the S2 ordering; Tasks 1 and 2
+untouched since S2. This is the configuration that goes to test, frozen here.
+
+*The prediction, and it is a point rather than an interval.* Every earlier slot
+predicted a band because the model had changed. This one has not. Against `v0.5.0`
+— the image that was S2 — the shipped diff is a docstring, a comment block, one
+never-read module constant (`PIRADS_WITHDRAWN_AFTER`) and the version string, which
+`inference.py` writes to the log and nowhere else. Rebuilt at `v0.5.0` in a detached
+worktree and run over the same 423-case cohort, **all 1237 output files hash
+identically** to the `v0.6.2` run — not the aggregates compared, the files. So:
+
+| | S2 (v0.5.0) | S5 predicted |
+|---|---|---|
+| Task 1 | .7799561022311022 | identical |
+| Task 2 | .8427374630407719 | identical |
+| Task 3 | .7851 | identical |
+| overall | .8061 | identical |
+
+**Any deviation at all falsifies the build pipeline, not the model.** That is the
+whole content of this slot and it is worth the last one: S3 and S4 both confirmed
+that a bit-identical model returns bit-identical validation scores, so a difference
+here isolates to the one thing never yet tested end-to-end — that the image CI
+builds from a tag, and that we then upload, is the code in that tag. The build host
+has no usable container runtime (`/etc/subuid` carries no entry for the build user),
+so the image is built and smoke-tested only in GitHub Actions, and *"the artifact I
+downloaded is the commit I tagged"* has been assumed on every submission so far.
+
+*What it does not test.* Generalisation. There is nothing new to generalise. Reading
+S5's Task 3 as fresh evidence about the ordering would be reading S2's number twice.
+
+*Stop rule.* If S5 returns 0.8061, the artefact is cleared for test and no further
+validation slot exists. If it returns anything else, the discrepancy is diagnosed
+before Sep 10 and the debug phase — unmetered, 3/day — is the instrument, not another
+validation slot, because there are none.
+
 ## Stop rules
 
 - **If S1 is within ~0.02 of (local − 0.118 on the rationale term) with no component
