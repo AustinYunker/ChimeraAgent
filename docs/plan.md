@@ -317,6 +317,13 @@ C-index depends only on *ordering* and that map is monotone, `MONTHS_AT_ZERO_RIS
 and `MONTHS_PER_CAPRA_POINT` **cannot move the score at all**. And there is no
 missingness headroom: all 75 cases parse all 12 CAPRA-S points.
 
+> ⚠️ **Sep 6: the first of those is false, and Item 11 cost 0.011 finding out.**
+> The map is monotone but it is *clamped* — `max(1.0, months)` — so the slope stops
+> being an order-isomorphism the moment the risk score is wide enough to push cases
+> onto the floor, where they tie and the C-index banks 0.5 on each. It was true in
+> August only because `capra_s + 0.99·cspca` never reached the clamp. "Monotone"
+> was doing work in the argument that "monotone on the observed range" cannot do.
+
 The headroom was structural instead. CAPRA-S is an integer score taking 12 distinct
 values over 75 cases, so it **ties 104 of the 1130 comparable pairs** — 9% of the
 metric — and the C-index banks a flat 0.5 on every one. The MRI report's AI-predicted
@@ -546,6 +553,71 @@ are the **same patient** — age 67, PSA 4.7, PSAD 0.14, PI-RADS 2, `cspca` 0.59
 eight decimals — and `T2-001`'s card carries `bx_isup 1, bx_gl_prim 3, bx_gl_sec 3`, the
 only occurrence of that grade in the whole 12-case batch. One case's record is being
 attributed to another case's output within a single submission.
+
+### Item 11 — Task 3 orders on PI-RADS too ✅ *Sep 6: +0.0443 on Task 3, +0.0089 overall*
+
+Item 7 improved the *tie-break* and then wrote Task 3 off — `docs/validation-staging.md`
+listed it under "deliberately not being validated", on the grounds that "nothing to
+learn per slot". Both premises there were true: the C-index depends only on ordering,
+and the ordering is CAPRA-S, a published nomogram. The conclusion still does not
+follow, because the argument never asked whether CAPRA-S is the *right* ordering as
+opposed to a defensible one. Item 7 optimised thoroughly inside a frame it did not
+question. Fifteen days later the leaderboard leader's Task 3 moved 0.7521 → 0.8512 and
+forced the question from outside.
+
+CAPRA-S is pathology-only and ignores imaging entirely — the same property Item 7 used
+to argue `cspca` was *weakly correlated* and therefore useful as a tie-break. Pushed one
+step further it says something larger: the nomogram is blind to a whole modality that
+the case card supplies. On the 75 released cases PI-RADS separates the cohort more
+sharply than the nomogram does.
+
+| PI-RADS | n | events | mean CAPRA-S |
+|---|---|---|---|
+| 2 | 5 | 0 | 3.40 |
+| 3 | 5 | 0 | 4.00 |
+| 4 | 27 | 3 | 2.89 |
+| 5 | 38 | **16** | 5.55 |
+
+All 19 recurrences sit in PI-RADS 4–5, 16 of them in PI-RADS 5, and the ten PI-RADS 2–3
+cases contain no event at all. It is not redundant with `cspca`: once PI-RADS is in the
+score, adding `cspca` on top is worth **+0.0005**.
+
+Shipped as `capra_s + 0.99·cspca + 2.0·(pirads − 2)`. Unlike Item 7's term this is **not
+bounded** — it can move a case across CAPRA bands — so it needs the stronger warrant
+above. The weight is still a scale choice, not a fit: PI-RADS spans 2–5, so weight 2
+gives it a 6-point range against CAPRA-S's 0–12, comparable authority rather than
+dominance. In-sample C-index is flat from weight 2 to 4 (0.7965, 0.7996, 0.8000), far
+inside the seed spread, and 2 is the value that keeps predicted months plausible.
+
+| | C-index | Δ | 95% CI (paired bootstrap, 4000×) | P(gain) |
+|---|---|---|---|---|
+| CAPRA-S | 0.7372 | — | — | — |
+| + csPCa tie-break (Item 7) | 0.7522 | +0.0150 | [−0.0067, +0.0396] | 0.90 |
+| **+ PI-RADS term** | **0.7965** | **+0.0443** | **[+0.0015, +0.1007]** | **0.98** |
+
+**The first Task 3 change whose interval excludes zero.** Pooled out-of-fold over 20
+seeds × 5 folds stratified on `event`, everything refit in fold, scored with the
+official `concordance_index`: 0.7522 → 0.7965, sd 0.0199 across seeds. Confirmed by the
+official evaluator on `work/run/all-pirads` against a `HEAD~1` rebuild of v0.5.0: task1
+0.6896 and task2 0.7444 **byte-identical** — verified by hashing all 1239 output files,
+not inferred from the aggregate — task3 0.7522 → **0.7965**, overall 0.7240 → **0.7329**.
+
+**Fitting buys nothing, which is the result that matters for the paper.** A hand-rolled
+L2-penalised Cox partial likelihood (no `lifelines`/`sksurv` in the env) given the same
+three inputs reaches 0.7962 against the chosen weights' 0.7965. Over the full 15-feature
+panel it falls to 0.7740, and GBM and random forest land at 0.6729 and 0.7151 —
+*below plain CAPRA-S*. Choosing the coefficients beats learning them at every level of
+model capacity we tried, so "nothing is fitted at inference" survives Item 11 intact.
+
+**A harness defect this exposed, worth more than the score.** Pooled out-of-fold
+comparison is invalid for any model refitted per fold: each fold's coefficients carry
+their own scale, so cross-fold pairs compare two different rulers. The tell was a
+control we only included as a sanity check — Cox on `capra_s` alone, a strictly monotone
+re-expression of `capra_s`, pooled *below* raw `capra_s` (0.7249 vs 0.7372), which is
+arithmetically impossible for a real ordering. `work/t3/compare.py` now scores
+within-fold pairs and pools numerator and denominator; the two agree to four decimals.
+Every fitted-model number in this item uses the corrected metric. The fixed-weight rows
+are unaffected either way, since nothing is fitted in them.
 
 ### C4 — Agent integration *(target: Sep 1)*
 MCP server, reveal execution, LLM writer, offline model weights.

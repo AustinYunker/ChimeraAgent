@@ -3,7 +3,7 @@
 %
 % TODO before submission:
 %   - e-mail (marked \todo{} below)
-%   - the test-set row in Table 3, once the Sep 10 submission resolves
+%   - the S3 and test-set rows in Table 3, once those submissions resolve
 %   - Sect. 5 states the reveal-honesty rule was "fixed at the outset".  That is
 %     true of the rule; the record does NOT establish whether the author or the
 %     agent originated it.  Confirm before submission, or soften the phrasing.
@@ -146,16 +146,17 @@ bookkeeping rather than reasoning, so the stratum instead opens the rationale as
 clinical characterisation.
 
 \paragraph{Task 3: ordering, not regression.}
-Task~3 ranks on Harrell's C-index~\cite{harrell} alone, so only the \emph{ordering}
-of predicted times matters and its reasoning trace earns nothing. We score each case
-with CAPRA-S~\cite{capras} and map it monotonically to months. CAPRA-S takes 12
-integer values over 75 training cases, tying 104 of 1130 comparable pairs, each
-banking a flat $0.5$. We break ties with the MRI-derived probability of clinically
-significant cancer, $\text{risk} = \text{CAPRA-S} + w\,p_{\text{csPCa}}$, with
-$w = 0.99$ a deliberate \emph{bound} rather than a tuned weight: the term reorders
-within a CAPRA band and never across one, so $p_{\text{csPCa}}$ need only beat a
-coin flip, and vanishes where a site emits none. It resolves those ties at $0.663$,
-lifting the training C-index from $0.7372$ to $0.7522$.
+Task~3 ranks on Harrell's C-index~\cite{harrell} alone, so only \emph{ordering}
+matters and its trace earns nothing. We score each case with CAPRA-S~\cite{capras}
+plus two MRI terms, mapped monotonically to months:
+$\text{risk} = \text{CAPRA-S} + 2\,(\text{PI-RADS}-2) + 0.99\,p_{\text{csPCa}}$.
+PI-RADS is a second axis, not a refinement: the nomogram is pathology-only, yet all
+19 recurrences sit at PI-RADS 4--5, sixteen at 5, and ten PI-RADS 2--3 cases have no
+event. Only $p_{\text{csPCa}}$ breaks ties --- CAPRA-S takes 12 integer values and
+ties 104 of 1130 pairs at a flat $0.5$ --- and its weight is a \emph{bound} not a
+fit: below 1 it reorders within an integer band and never across one, so it need
+only beat a coin flip, and vanishes where a site emits none. Out of fold the two
+terms give $0.7373 \to 0.7522 \to 0.7965$.
 
 \section{The Loop, and What It Removed}
 \label{sec:loop}
@@ -189,7 +190,7 @@ Task~1 GBM over panel $+$ MRI embedding & no &
 Task~2 guideline plus a learned residual & part &
   guideline kept, residual removed: six leaf labels \\
 Task~3 fitted survival regression & no &
-  the C-index depends only on ordering \\
+  Cox on the same inputs: $.7962$ vs $.7965$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -259,8 +260,8 @@ logistic reg.\       & .6833 & .7657 & .7528 & .7383 \\
 \end{tabular}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.435\textwidth}
-\caption{Validation. S2 differs from S1 only by splitting one Task~2 leaf on ISUP
-grade~1; Tasks~1 and~3 returned bit-identical scores, so the change was isolated.}
+\caption{Validation, one variable per slot. S2 split one Task~2 leaf on ISUP
+grade~1; Tasks~1 and~3 returned bit-identical scores. S3 changes Task~3 alone.}
 \label{tab:val}
 \centering
 \setlength{\tabcolsep}{2pt}
@@ -274,6 +275,7 @@ Task 3 (C-idx) & .7851 & .7851 & $\pm$.0000 \\
 \midrule
 \textbf{Overall} & .7356 & \textbf{.8061} & $+$.0705 \\
 \midrule
+S3 (Task~3) & \multicolumn{3}{c}{\todo{pending}} \\
 Test & \multicolumn{3}{c}{\todo{Sep 10}} \\
 \bottomrule
 \end{tabular}
