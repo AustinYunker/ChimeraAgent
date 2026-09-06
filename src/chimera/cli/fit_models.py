@@ -124,7 +124,7 @@ def main() -> int:
             entry3["cv_score"] = result["mean"]
             entry3["cv_sd"] = 0.0
             print(f"=== task3 (n={len(rows3)}) ===")
-            print("  CAPRA-S + csPCa tie-break, nothing fitted "
+            print("  CAPRA-S + PI-RADS, csPCa tie-break, nothing fitted "
                   f"-> c-index {result['mean']:.4f}\n")
         fitted["task3"] = entry3
 

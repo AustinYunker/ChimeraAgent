@@ -170,12 +170,14 @@
   },
   "task3": {
     "cspca_tiebreak_weight": 0.99,
-    "cv_score": 0.7522123893805309,
+    "cv_score": 0.7964601769911505,
     "cv_sd": 0.0,
     "fitted": false,
-    "model": "capra_s + cspca tie-break",
+    "model": "capra_s + pirads + cspca tie-break",
     "months_at_zero_risk": 120.0,
-    "months_per_capra_point": 8.0,
-    "n_labeled": 75
+    "months_per_capra_point": 6.0,
+    "n_labeled": 75,
+    "pirads_reference": 2,
+    "pirads_risk_weight": 2.0
   }
 }
