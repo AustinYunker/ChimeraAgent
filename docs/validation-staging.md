@@ -424,6 +424,40 @@ rather than a licence to re-fit.
 
 Only if S2's result is legible. If S2 came back inside noise, S3 is not spent.
 
+**Resolved Sep 6: S3 carries the Task 3 PI-RADS ordering term.** S2 was legible
+(+0.0510 on Task 2, exactly 0.0000 elsewhere — the cleanest single-variable result
+of the campaign), so the slot is live, and the second-largest gap is no longer Task 2.
+
+*The one variable.* `predict_months` adds `PIRADS_RISK_WEIGHT * (pirads - 2)` to the
+risk score, and `MONTHS_PER_CAPRA_POINT` drops 8.0 → 6.0. The second is not an
+independent lever: at 8.0 the new term pushed nine cases onto the `max(1.0, ·)` clamp
+where they tied and the C-index banked 0.5 on each, costing 0.011. The slope cannot
+otherwise change an ordering, so the two constants are one change.
+
+*Measurement, before submitting.* Pooled out-of-fold over 20 seeds × 5 folds,
+stratified on `event`, everything refit in fold, scored with the official
+`concordance_index`: 0.7522 → 0.7965, **+0.0443** (sd 0.0199 across seeds). Paired
+bootstrap over 4000 resamples: +0.0450, 95% CI **[+0.0015, +0.1007]**, P(gain) 0.98 —
+the first Task 3 change whose interval excludes zero. Confirmed end-to-end by the
+official `evaluate.py` on the 75 training cases at **0.7965**, with task1 (0.6896) and
+task2 (0.7444) byte-identical to the S2 run. A hand-rolled L2 Cox given the same three
+inputs reaches 0.7962: fitting the coefficients buys nothing over choosing them, so the
+"nothing is learned at inference" property survives intact.
+
+*What it should be worth on validation, stated before submitting.* Task 3 carries
+weight 0.20 and its ranking score is the C-index alone, so +0.0443 on the cohort is
+**+0.0089 overall** — S2's 0.8061 to about **0.815**. Our validation C-index (0.7851)
+already runs above training (0.7522), so the cohorts are not identical and the
+transfer is not guaranteed. The honest interval is **+0.004 to +0.013 overall**; the
+floor if PI-RADS is absent from validation reports is exactly **0.0000**, because a
+case missing the line keeps its CAPRA-S ordering unchanged. A result outside that
+interval is information about the cohort, not a licence to re-fit the weight.
+
+*The residual risk, named.* PI-RADS is parsed on 75/75 training cases from a report
+already retrieved, so this costs no extra tool call and no new reveal. We have no
+validation inputs locally and therefore cannot verify availability there — hence the
+`is not None` guard, which makes absence a no-op rather than a regression.
+
 ### S4 — contingency, held
 
 Reserved for the organizer's answer to Q2. If a deterministic MCP orchestrator is
@@ -456,6 +490,22 @@ why it is not scheduled for Sep 9.
 - **Task 3.** It ranks on C-index alone and its reasoning trace is worth zero. The
   `cspca` tie-break is bounded below one CAPRA point by construction, so its
   worst case off-training is a return to plain CAPRA-S. Nothing to learn per slot.
+
+  **Sep 6: this was wrong, and it is the most instructive error in the document.**
+  Both sentences are true and the conclusion does not follow from them. "Nothing to
+  learn per slot" was a claim about the *tie-break*, silently generalised to the
+  *ordering*. The reasoning went: only the ordering matters, the ordering is CAPRA-S,
+  CAPRA-S is a published nomogram, therefore Task 3 is finished. The unexamined step
+  is the third one — that CAPRA-S is the right ordering rather than merely a
+  defensible one. It is pathology-only and ignores imaging entirely, and PI-RADS
+  turns out to carry prognostic signal it does not contain: all 19 recurrences in the
+  released cohort sit in PI-RADS 4–5, 16 of them in PI-RADS 5, and the ten PI-RADS 2–3
+  cases contain no event at all. Adding it is worth **+0.0443 C-index**, the largest
+  single measured gain left anywhere in the system.
+
+  Nothing here needed a validation slot to find. It needed the frame to be questioned
+  once. See `PIRADS_RISK_WEIGHT` in `src/chimera/models/stratified.py` for the
+  measurement, and §5 of `paper2/main.tex` — this is the same pattern as intervention 5.
 - **Task 2.** The strongest task (CV 0.71 against 0.27 for a constant) and untouched
   since the refit. It carries the same weight as Task 1, so a Task 2 collapse in S1
   would be the biggest single finding available — but it is a *read* of S1, not a

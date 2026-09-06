@@ -108,12 +108,14 @@ def main() -> int:
         # Task 3 has nothing to fit; the record exists so the file documents all three.
         rows3 = load_rows(args.cases, args.gt, 3, session)
         entry3: dict[str, Any] = {
-            "model": "capra_s + cspca tie-break",
+            "model": "capra_s + pirads + cspca tie-break",
             "fitted": False,
             "n_labeled": len(rows3),
             "months_at_zero_risk": stratified.MONTHS_AT_ZERO_RISK,
             "months_per_capra_point": stratified.MONTHS_PER_CAPRA_POINT,
             "cspca_tiebreak_weight": stratified.CSPCA_TIEBREAK_WEIGHT,
+            "pirads_risk_weight": stratified.PIRADS_RISK_WEIGHT,
+            "pirads_reference": stratified.PIRADS_REFERENCE,
         }
         if rows3 and not args.skip_cv:
             result = cross_validate(

@@ -75,6 +75,7 @@ from __future__ import annotations
 from chimera.evidence.reports import NOT_ASSESSED, PriorContext, SurgicalPathology
 from chimera.evidence.structured import StructuredFeatures, ct_stage_name
 from chimera.models.guidelines import CAPRA_S_MAX
+from chimera.models.stratified import PIRADS_REFERENCE
 
 #: Card fields the rationale may assert *anything at all* about, because the
 #: narrative sections state them often enough that the judge can corroborate
@@ -473,23 +474,32 @@ def recurrence_rationale(
         if assessable >= CAPRA_S_MAX:
             basis = (
                 f"These give a CAPRA-S score of {earned} of {CAPRA_S_MAX}, which "
-                "is what orders this case against the rest of the cohort. "
+                "is the starting point for ordering this case against the rest of "
+                "the cohort. "
             )
         else:
             basis = (
                 f"These give {earned} of the {assessable} CAPRA-S points this "
-                "specimen allows to be scored, which is what orders the case "
-                "against the rest of the cohort. "
+                "specimen allows to be scored, the starting point for ordering the "
+                "case against the rest of the cohort. "
             )
 
-    # CAPRA-S is coarse enough to tie cases outright, and when it does the MRI's
-    # csPCa probability decides the order -- so saying the nomogram alone ranks the
-    # case would overstate it. Stated by value: the judge reads the same radiology
-    # report this was parsed from, so the claim is corroborable by construction.
+    # CAPRA-S is pathology-only, and the MRI moves the case off that starting
+    # point in two ways -- PI-RADS materially, csPCa only within a band. Saying
+    # the nomogram alone ranks the case would misdescribe what actually ran.
+    # Stated by value: the judge reads the same radiology report these were parsed
+    # from, so both claims are corroborable by construction.
+    # Only claimed when the term actually moved the case: at the reference PI-RADS
+    # it contributes nothing, and saying otherwise would describe a step we skipped.
+    if capra is not None and pathology.pirads is not None and pathology.pirads > PIRADS_REFERENCE:
+        basis += (
+            f"The nomogram is pathology-only; preoperative MRI reported PI-RADS "
+            f"{pathology.pirads}, which raises this case in the ordering. "
+        )
     if capra is not None and pathology.cspca is not None:
         basis += (
-            f"Where that score ties other cases, the MRI-derived probability of "
-            f"clinically significant cancer ({pathology.cspca:.2f}) breaks the tie. "
+            f"Where cases remain level, the MRI-derived probability of clinically "
+            f"significant cancer ({pathology.cspca:.2f}) breaks the tie. "
         )
 
     return (

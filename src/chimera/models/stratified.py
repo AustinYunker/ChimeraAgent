@@ -45,11 +45,17 @@ FALLBACK_MONTHS = 60.0
 #: `watchful_waiting` has 2 examples in 72 and never clears it.
 MIN_ROWS_FOR_CONDITIONAL_FIT = 8
 
-#: Maps a CAPRA-S score onto predicted months. Only the ordering matters for the
+#: Maps a risk score onto predicted months. Only the ordering matters for the
 #: C-index, so this is an arbitrary decreasing map chosen to stay in a plausible
 #: clinical range and to keep `months_to_recurrence` positive and finite.
+#:
+#: The slope is *not* free, because the map is clamped at one month. At 8.0 the
+#: PI-RADS term below pushed nine of the 75 cases onto the clamp, where they tied
+#: and the C-index banked 0.5 on each: 0.7965 fell to 0.7858. 6.0 keeps the whole
+#: cohort off the floor (6.7 to 111.2 months) and costs nothing else, since the
+#: slope cannot otherwise change an ordering.
 MONTHS_AT_ZERO_RISK = 120.0
-MONTHS_PER_CAPRA_POINT = 8.0
+MONTHS_PER_CAPRA_POINT = 6.0
 
 #: Weight on the MRI's AI-predicted probability of clinically significant cancer,
 #: added to CAPRA-S to order cases the nomogram cannot separate.
@@ -80,6 +86,35 @@ MONTHS_PER_CAPRA_POINT = 8.0
 #: is individually significant -- which is why the calibration-free half of the
 #: available gain is the only half taken. See ``docs/plan.md``.
 CSPCA_TIEBREAK_WEIGHT = 0.99
+
+#: Weight on PI-RADS, added to CAPRA-S as `PIRADS_RISK_WEIGHT * (pirads - 2)`.
+#:
+#: Unlike the csPCa term this is *not* a bounded tie-break -- it can move a case
+#: across several CAPRA-S points -- so it needs a stronger justification, and it
+#: has one. CAPRA-S is pathology-only and ignores imaging entirely, yet on the 75
+#: released cases PI-RADS separates the cohort more sharply than the nomogram does:
+#: all 19 recurrences sit in PI-RADS 4-5, 16 of them in PI-RADS 5, and the ten
+#: PI-RADS 2-3 cases contain no event at all. It is not redundant with `cspca`
+#: either -- once PI-RADS is in the score, adding `cspca` on top is worth +0.0005.
+#:
+#: The value is a scale choice, not a fitted one. PI-RADS spans 2-5, so weight 2
+#: gives the term a 6-point range against CAPRA-S's 0-12: comparable authority, not
+#: dominant. The in-sample C-index is flat from 2 to 4 (0.7965, 0.7996, 0.8000),
+#: far inside the seed spread, and weight 2 is the one that keeps predicted months
+#: clinically plausible. PI-RADS is parsed on 75/75 from a report already retrieved,
+#: and a case whose report omits it keeps its CAPRA-S ordering exactly.
+#:
+#: Pooled out-of-fold over 20 seeds x 5 folds, refit in fold, scored with the
+#: official `concordance_index`: 0.7522 -> 0.7965, +0.0442 (sd 0.0199 across seeds).
+#: A hand-rolled L2 Cox given the same three inputs reaches 0.7962 -- fitting the
+#: coefficients buys nothing over choosing them. Paired bootstrap over 4000
+#: resamples: +0.0450, 95% CI [+0.0015, +0.1007], P(gain) 0.98. This is the first
+#: Task 3 change whose interval excludes zero.
+PIRADS_RISK_WEIGHT = 2.0
+
+#: The lowest PI-RADS in the cohort, so the term contributes nothing at PI-RADS 2
+#: and the score stays on roughly the CAPRA-S scale.
+PIRADS_REFERENCE = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -423,12 +458,15 @@ def predict_record(
 # --------------------------------------------------------------------------- #
 
 def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
-    """Predicted months to recurrence, ordered by CAPRA-S with the MRI as a
-    tie-breaker. Nothing is fitted -- both constants are chosen, not learned.
+    """Predicted months to recurrence, ordered by CAPRA-S plus the two things the
+    nomogram ignores: the MRI's csPCa probability and PI-RADS. Nothing is fitted --
+    every constant is chosen, not learned.
 
     The csPCa term is bounded below one CAPRA-S point by construction, so it only
     orders cases the nomogram scores equally; see :data:`CSPCA_TIEBREAK_WEIGHT`.
-    A report that does not state it leaves the CAPRA-S ordering untouched.
+    The PI-RADS term is a real reordering and carries the larger gain; see
+    :data:`PIRADS_RISK_WEIGHT`. Either report line may be missing, and a case that
+    is missing both keeps its CAPRA-S ordering exactly.
     """
     pathology = extract_reports(store)
     score = capra_s(pathology, extract_structured(case, store).psa)
@@ -436,6 +474,8 @@ def predict_months(case: CaseInputs, store: ClinicalStore) -> float:
         return FALLBACK_MONTHS
     if pathology.cspca is not None:
         score += CSPCA_TIEBREAK_WEIGHT * pathology.cspca
+    if pathology.pirads is not None:
+        score += PIRADS_RISK_WEIGHT * (pathology.pirads - PIRADS_REFERENCE)
     months = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * score
     return max(1.0, months)
 
