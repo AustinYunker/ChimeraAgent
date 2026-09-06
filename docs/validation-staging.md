@@ -458,12 +458,118 @@ already retrieved, so this costs no extra tool call and no new reveal. We have n
 validation inputs locally and therefore cannot verify availability there — hence the
 `is not None` guard, which makes absence a no-op rather than a regression.
 
-### S4 — contingency, held
+#### S3 result — Sep 6, `val_metrics_S3.json`. The pre-registration was wrong.
 
-Reserved for the organizer's answer to Q2. If a deterministic MCP orchestrator is
-ruled non-compliant, the LLM writer stops being optional and the resulting variant is
-an architecture change that must be validated on a real cohort before Sep 10. If no
-contingency materialises by **Sep 6**, S4 converts to a third probe.
+The isolation held exactly as promised: Tasks 1 and 2 returned bit-identical scores.
+Task 3 alone moved, and it moved down hard.
+
+| | S2 | S3 | Δ |
+|---|---|---|---|
+| Task 3 C-index (= ranking score) | 0.7851 | **0.6281** | **−0.1570** |
+| overall | 0.8061 | 0.7747 | −0.0314 |
+
+Far below the pre-registered band of +0.004 to +0.013, and below the floor claimed
+above as "exactly 0.0000". **The floor claim is the thing that failed, and it failed
+for a reason stated two paragraphs above it**: the `is not None` guard was named as
+the safeguard, and it was the defect.
+
+*Diagnosis.* Each case's PI-RADS term is recoverable from the two runs' `pred_months`
+— `risk_S2 = (120 − m₂)/8`, `risk_S3 = (120 − m₃)/6`, `term = risk₃ − risk₂ =
+2·(pirads − 2)`. The reconstruction reproduces both reported C-indices exactly
+(0.7851 and 0.6281), so it is the real per-case input. It shows:
+
+- **17 of 23 validation cases carry PI-RADS; 6 do not.** Training is 75/75.
+- **3 of the 7 events sit in the no-PI-RADS group**, and they are the early
+  recurrences: T3-078 (12.5 mo), T3-081 (19.1 mo), T3-084 (20.5 mo).
+- Restricted to the 17 like-for-like cases, **S3 is better: 0.8868 → 0.9057**.
+
+So the ordering hypothesis was right and the encoding of absence was wrong. Skipping
+the term is not neutral, because the term is added to a scale every *other* case is
+also scored on: contributing nothing is indistinguishable from contributing the
+reference, and asserts the cohort's lowest MRI risk about a case whose MRI risk is
+unknown. Under uniform absence that is harmless — every case shifts alike. Under
+partial coverage the two groups sit on incompatible scales and the unknowns sink.
+
+*The correction to the process, which matters more than the correction to the model.*
+"Training is 75/75, so absence is untestable here" was false. Absence is not testable
+on training, but **partial coverage is simulable on training**, and the simulation
+(400 draws at validation's 17/23 rate) says the shipped configuration was a **52%
+chance of scoring worse than no term at all**, with a lower tail reaching 0.6381 —
+which is where the observed 0.6281 landed. This was not invisible. It was unasked.
+The missing invariant: *when a term is added to a shared scale, price its absence at
+the coverage rate you might actually meet, not at the one you have.*
+
+The simulation is `work/t3/missingness.py` — gitignored with the rest of the analysis
+scratch, since it reads challenge-derived features, but it needs only `work/t3/t3.json`
+and reproduces every figure in the S4 table below.
+
+### S4 — Sep 7. The missingness fix, and nothing else.
+
+The contingency S4 was held for did not materialise by Sep 6 (no organizer reply), so
+the slot converts to a probe, as provided for above.
+
+*The one variable.* `PIRADS_MISSING = 5` replaces the `is not None` skip: a report
+that states no PI-RADS is scored at the training median instead of implicitly at the
+reference. `PIRADS_RISK_WEIGHT` stays 2.0 and `MONTHS_PER_CAPRA_POINT` stays 6.0 —
+**nothing that S3 fitted is re-fitted.** One line of prediction changes.
+
+*Why the weight is not touched, though it is the obvious suspect.* The prior read of
+this failure — recorded here because it was wrong — was that the defect is the weight
+violating the bound this project states for `cspca` ("below 1 it reorders within a
+band and never across one"), and that the fix is a sub-1 weight. The training
+simulation refutes it. At w = 0.5, where the term provably cannot cross a CAPRA-S
+band, the reference encoding **still loses 34% of the time**. The defect is the value
+absence asserts, not its magnitude; bounding the weight treats a symptom.
+
+| missing → | w | mean | p05 | P(worse than no term) |
+|---|---|---|---|---|
+| reference | 0.5 | .7591 | .7319 | 34% |
+| reference | 1.0 | .7599 | .7142 | 39% |
+| reference | 2.0 | .7441 | .6752 | **52%** |
+| median (5) | 0.5 | .7646 | .7575 | 0% |
+| median (5) | 1.0 | .7763 | .7646 | 0% |
+| median (5) | 2.0 | **.7840** | .7681 | **0%** |
+
+*Why the median.* PI-RADS is **ordinal**, so the median is the admissible central
+statistic and the mean (4.307) is not a value the scale takes. Training cannot
+separate them on score (.7840 vs .7844; the median has the better p05), so the choice
+is made on the scale's properties rather than on either cohort's numbers.
+
+One thing not to gloss: the training cohort is 2:5, 3:5, 4:27, 5:38, so its median is
+**5 — the top of the scale**, not a midpoint. An unimaged case ties the largest group.
+That is the intended placement (only ordering is scored, and tying the plurality is
+the minimum-information choice against a floor), but "impute the median" reads milder
+than what it does here, and the difference matters for the test cohort: because this
+median sits at the scale boundary, a less florid second institution can only shift it
+down, which would place unknowns too high.
+
+*Provenance, stated rather than dressed up.* The justification above uses training
+only. **The prompt to look did not** — validation is what sent us back to simulate
+coverage. This is a defect fix rather than a fit, and the distinction is real, but it
+is not the same as having derived it a priori, and this document should not imply
+otherwise.
+
+*What it should be worth, stated before submitting.* Training at 100% coverage is
+unchanged by construction (0.7965 — no training case is missing PI-RADS, so the new
+branch never executes there), which means **training offers no estimate of the
+validation gain and none is claimed**. The prediction is directional and structural:
+Task 3 recovers to at least the S2 ordering's 0.7851, because the 17 like-for-like
+cases already score 0.9057 and the 6 unknowns move from the floor to the middle. The
+band is **0.7851 to 0.8500** on Task 3, i.e. **0.8061 to 0.8191 overall**. A result
+below 0.7851 falsifies the imputation account outright.
+
+*The residual risk, named — and this time priced.* The training median is
+cohort-dependent, and it sits at the scale boundary, so a second institution can only
+move it down. That risk is still strictly smaller than the one it replaces:
+mis-imputing the central value is wrong by however far the two cohorts' centres
+differ, whereas imputing the reference is wrong by the full range of the term, in the
+same direction, for every affected case. The 40% of the test set drawn from a second
+institution is where this is tested, and the simulation above is the only evidence we
+will have before then.
+
+*Fallback, decided in advance.* If S4 does not clear 0.7851 on Task 3, the test
+submission ships the **S2 ordering** — CAPRA-S + csPCa, no PI-RADS term — which is
+known at 0.7851 and costs nothing to revert to. S5 remains the dress rehearsal.
 
 ### S5 — dress rehearsal, Sep 8. The exact frozen test artefact.
 

@@ -75,7 +75,7 @@ from __future__ import annotations
 from chimera.evidence.reports import NOT_ASSESSED, PriorContext, SurgicalPathology
 from chimera.evidence.structured import StructuredFeatures, ct_stage_name
 from chimera.models.guidelines import CAPRA_S_MAX
-from chimera.models.stratified import PIRADS_REFERENCE
+from chimera.models.stratified import PIRADS_MISSING, PIRADS_REFERENCE
 
 #: Card fields the rationale may assert *anything at all* about, because the
 #: narrative sections state them often enough that the judge can corroborate
@@ -491,11 +491,22 @@ def recurrence_rationale(
     # from, so both claims are corroborable by construction.
     # Only claimed when the term actually moved the case: at the reference PI-RADS
     # it contributes nothing, and saying otherwise would describe a step we skipped.
-    if capra is not None and pathology.pirads is not None and pathology.pirads > PIRADS_REFERENCE:
-        basis += (
-            f"The nomogram is pathology-only; preoperative MRI reported PI-RADS "
-            f"{pathology.pirads}, which raises this case in the ordering. "
-        )
+    # When the report states no PI-RADS the term still moves the case, because a
+    # skipped term is not a neutral one (see stratified.PIRADS_MISSING) -- so the
+    # assumption is disclosed as an assumption. Never state an imputed value as if
+    # the report carried it: the judge reads the same report and would not find it.
+    if capra is not None:
+        if pathology.pirads is None:
+            basis += (
+                f"The nomogram is pathology-only, and this report states no PI-RADS; "
+                f"a cohort-typical {PIRADS_MISSING} is assumed for ordering, which is "
+                f"an assumption of this system and not a finding of the report. "
+            )
+        elif pathology.pirads > PIRADS_REFERENCE:
+            basis += (
+                f"The nomogram is pathology-only; preoperative MRI reported PI-RADS "
+                f"{pathology.pirads}, which raises this case in the ordering. "
+            )
     if capra is not None and pathology.cspca is not None:
         basis += (
             f"Where cases remain level, the MRI-derived probability of clinically "

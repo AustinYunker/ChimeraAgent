@@ -116,6 +116,10 @@ def main() -> int:
             "cspca_tiebreak_weight": stratified.CSPCA_TIEBREAK_WEIGHT,
             "pirads_risk_weight": stratified.PIRADS_RISK_WEIGHT,
             "pirads_reference": stratified.PIRADS_REFERENCE,
+            # Never exercised on training (75/75 carry PI-RADS), so cv_score below
+            # is blind to it. Recorded anyway: it changes predictions on any cohort
+            # with partial coverage, which is what cost the S3 slot.
+            "pirads_missing": stratified.PIRADS_MISSING,
         }
         if rows3 and not args.skip_cv:
             result = cross_validate(

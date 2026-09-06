@@ -177,6 +177,7 @@
     "months_at_zero_risk": 120.0,
     "months_per_capra_point": 6.0,
     "n_labeled": 75,
+    "pirads_missing": 5,
     "pirads_reference": 2,
     "pirads_risk_weight": 2.0
   }

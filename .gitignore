@@ -102,6 +102,7 @@ paper2/*.synctex.gz
 /val_metrics_S1.json
 /val_metrics_best_score.json
 /val_metrics_S2.json
+/val_metrics_S3.json
 # Sep 6 leaderboard leader. Same reasons, plus one more: its `reason` strings are
 # another entrant's generated text, and they quote clinical values from the
 # validation cases. Not ours to redistribute, and not ours to mine.

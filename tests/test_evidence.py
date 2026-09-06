@@ -29,6 +29,9 @@ from chimera.models.stratified import (
     FALLBACK_MONTHS,
     MONTHS_AT_ZERO_RISK,
     MONTHS_PER_CAPRA_POINT,
+    PIRADS_MISSING,
+    PIRADS_REFERENCE,
+    PIRADS_RISK_WEIGHT,
     predict_months,
 )
 
@@ -508,13 +511,66 @@ def test_cspca_does_break_a_tie():
 
 
 def test_absent_cspca_leaves_the_capra_ordering_untouched():
-    """A report that omits the line must reproduce the pre-tie-break months exactly."""
+    """A report that omits the line must reproduce the pre-tie-break months exactly.
+
+    Skipping this term is safe precisely because it is bounded below one CAPRA-S
+    point; the PI-RADS term is not bounded and is *imputed* rather than skipped, so
+    the expectation carries it -- see the two tests below.
+    """
     clinical = {"surgical_pathology_report": SURGICAL}
     p = _reports(3, clinical=clinical)
     assert p.cspca is None
+    imputed = PIRADS_RISK_WEIGHT * (PIRADS_MISSING - PIRADS_REFERENCE)
     assert _months(clinical, 12.0) == pytest.approx(
-        MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * capra_s(p, 12.0)
+        MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * (capra_s(p, 12.0) + imputed)
     )
+
+
+def test_absent_pirads_is_imputed_not_skipped():
+    """The S3 regression, as a test.
+
+    Skipping the term is not neutral: it is arithmetically identical to asserting
+    ``PIRADS_REFERENCE``, the lowest MRI risk in the cohort, about a case whose MRI
+    risk is unknown. On a cohort where only some reports carry the line -- 17 of 23
+    validation cases -- that sinks the unknowns below cases that merely happen to
+    have been imaged, and it cost the S3 slot (C-index 0.7851 -> 0.6281).
+    """
+    p = _reports(3, clinical={"surgical_pathology_report": SURGICAL})
+    assert p.pirads is None
+    absent = _months({"surgical_pathology_report": SURGICAL}, 12.0)
+
+    at_reference = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * capra_s(p, 12.0)
+    assert absent != pytest.approx(at_reference), (
+        "a missing PI-RADS is being treated as PIRADS_REFERENCE -- this is the S3 bug"
+    )
+    expected = MONTHS_AT_ZERO_RISK - MONTHS_PER_CAPRA_POINT * (
+        capra_s(p, 12.0) + PIRADS_RISK_WEIGHT * (PIRADS_MISSING - PIRADS_REFERENCE)
+    )
+    assert absent == pytest.approx(max(1.0, expected))
+
+
+def test_absent_pirads_lands_in_the_cohorts_modal_band_not_its_floor():
+    """Where the unknowns land is the whole point; the weight cannot supply it.
+
+    ``PIRADS_MISSING`` is the training median, and on this right-skewed cohort
+    (2:5, 3:5, 4:27, 5:38) that median is also the top of the scale -- so an
+    unimaged case ties the largest group rather than sitting at a midpoint. That
+    is the intended behaviour and worth asserting explicitly, because "impute the
+    median" and "impute a middling value" are not the same statement here.
+    """
+    same = {"surgical_pathology_report": SURGICAL}
+    # All three carry the csPCa line, so PI-RADS is the only thing that varies.
+    silent = RADIOLOGY.replace("PI-RADS: 5. ", "")
+    assert _reports(3, clinical={**same, "radiology_report": silent}).pirads is None
+
+    unknown = _months({**same, "radiology_report": silent}, 12.0)
+    modal = _months({**same, "radiology_report": RADIOLOGY}, 12.0)
+    floor = _months(
+        {**same, "radiology_report": RADIOLOGY.replace("PI-RADS: 5", "PI-RADS: 2")},
+        12.0,
+    )
+    assert unknown == pytest.approx(modal), "unknown must tie the modal band"
+    assert unknown < floor, "unknown must outrank the reference band, not join it"
 
 
 def test_unreadable_specimen_still_falls_back_rather_than_ranking_on_the_mri_alone():
