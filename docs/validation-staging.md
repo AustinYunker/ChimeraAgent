@@ -724,6 +724,65 @@ validation slot exists. If it returns anything else, the discrepancy is diagnose
 before Sep 10 and the debug phase — unmetered, 3/day — is the instrument, not another
 validation slot, because there are none.
 
+#### S5 result — Sep 7, `val_metrics_S5.json`. The point prediction held exactly.
+
+| | predicted | returned |
+|---|---|---|
+| Task 1 | .7799561022311022 | .7799561022311022 |
+| Task 2 | .8427374630407719 | .8427374630407719 |
+| Task 3 | .7851239669421488 | .7851239669421488 |
+| **overall** | **.8061022194971794** | **.8061022194971794** |
+
+Stronger than the prediction asked for: the returned file is **byte-identical** to
+`val_metrics_S2.json` — same SHA-256, 146,163 bytes, all 109 per-case records, every
+component score, every judge rationale score. A recursive diff over the whole
+document reports zero differing leaves.
+
+**The artefact is cleared for test.** That was the slot's entire purpose: the image
+CI builds from a tag is the code in that tag, and the thing we upload is that image.
+That link had been assumed on every previous submission and could not be checked on
+this host, which has no usable container runtime. It is now checked.
+
+*Why an identical file is evidence rather than a coincidence.* Byte-identity is also
+what a mistaken re-download of S2 would look like, and the file carries no submission
+id or timestamp to separate the two, so the content alone cannot. What separates them
+is S3 and S4. Both were distinct submissions of a changed Task 3, and both returned
+Tasks 1 and 2 **exactly** — all 78 rationale scores and all 640 numeric leaves on the
+86 non-Task-3 cases, unchanged across three independent runs. So the platform scores
+reproducibly, an unchanged input is expected to return an unchanged file, and it did.
+
+*A finding worth keeping: the platform judge is deterministic.* That was not knowable
+before. `evaluate.py` scores the rationale with an LLM judge, and nothing in the
+challenge documentation says it runs at temperature 0 or caches by input. Three
+submissions now say it does, to the last bit, on 78 rationale scores. Two things
+follow. First, every "Tasks 1 and 2 returned bit-identical scores" claim in this
+document is a real isolation result and not a rounding artefact — the one-variable
+discipline was genuinely clean. Second, any future A/B on rationale text needs no
+repeat runs to average out judge noise, because on this platform there is none.
+
+## The campaign, closed
+
+Five slots, spent Sep 1--7.
+
+| slot | one variable | Task 1 | Task 2 | Task 3 | overall |
+|---|---|---|---|---|---|
+| S1 | frozen v0.4.1 baseline | .7800 | .6666 | .7851 | .7356 |
+| S2 | split EAU intermediate on ISUP 1 | .7800 | **.8427** | .7851 | **.8061** |
+| S3 | + PI-RADS term, absence skipped | .7800 | .8427 | .6281 | .7747 |
+| S4 | + PI-RADS term, absence imputed | .7800 | .8427 | .7438 | .7978 |
+| S5 | dress rehearsal, S2 ordering restored | .7800 | .8427 | .7851 | **.8061** |
+
+Best counts, so the campaign scores **0.8061**, set on Sep 2 by S2 and confirmed on
+Sep 7 by S5. One change was worth anything: S2's, at +0.0705. The PI-RADS term cost
+two slots and returned zero. Task 1 never moved, which is the honest headline — its
+six gate failures were measured as unsafe to chase and were not chased.
+
+What the slots bought beyond the number: a per-case decomposition of S2's overshoot
+that reduced its honest projection to +0.024; the coverage-simulation invariant from
+S3; the separation-is-a-hypothesis lesson from S4; a verified build-to-upload chain
+and a deterministic judge from S5. No slot was spent on a question the debug phase
+could have answered, which was the rule this document opened with.
+
 ## Stop rules
 
 - **If S1 is within ~0.02 of (local − 0.118 on the rationale term) with no component
