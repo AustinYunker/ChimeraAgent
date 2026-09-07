@@ -99,7 +99,11 @@ is not a statement about our tie-break but about ordering information we were no
 using at all. That prompted the re-examination that found PI-RADS. The distinction
 matters for anyone repeating this: competitor metrics were useful as a
 \emph{falsifier of our own beliefs about saturation}, and would have been actively
-harmful used as a target.
+harmful used as a target. It should be said plainly that the term this re-examination
+produced was \emph{wrong} and was withdrawn before test (Sect.~\ref{sec:results}). The
+frame really was still open --- the $0.0661$ gap is real and we are not using that
+ordering information --- but reopening a frame is not the same as filling it, and two
+of five validation slots were spent discovering the difference.
 
 \paragraph{A hazard, reported rather than used.}
 The same dumps carry a defect. Judge feedback is published verbatim in a
@@ -131,18 +135,26 @@ defect rather than as noise, which is the discipline Sect.~\ref{sec:human} shows
 loop lacked about \emph{favourable} numbers. The asymmetry is instructive on its own:
 the loop interrogated results that looked wrong and banked results that looked good.
 
-\paragraph{Pre-registration became free.}
+\paragraph{Pre-registration became free, and then it was needed.}
 Every validation slot in this campaign carries an interval stated in a committed
 document \emph{before} the submission --- S2's $+0.046$ to $+0.057$, S3's $+0.004$ to
 $+0.013$ with a named floor of exactly $0.0000$ --- together with the one variable
 changed and the residual risk. This is ordinary good practice that entries rarely
 follow, and the reason is cost: writing it down is a separate task competing with the
 work. For an agent the artefact is a byproduct of the working process rather than an
-overhead on it. The value showed up immediately: S2 came in \emph{above} its band at
-$+0.0705$, and because the band existed, the overshoot was legible as a question
-rather than a success, which is what produced the prevalence decomposition and the
-honest $+0.024$ projection in Sect.~\ref{sec:results}. A result cannot surprise you
-if you never said what you expected.
+overhead on it. Both slots that carried a band tested it, in opposite directions. S2
+came in \emph{above} its band at $+0.0705$, and because the band existed the overshoot
+was legible as a question rather than a success, which produced the prevalence
+decomposition and the honest $+0.024$ projection in Sect.~\ref{sec:results}. S3 came
+in far \emph{below} its floor --- $-0.157$ of C-index against a floor of $0.0000$ ---
+and S4's repair still landed $0.041$ short, so the floor fired and the term was
+withdrawn. That is the harder case and the one that matters: the same document also
+recorded that ``a result outside that interval is information about the cohort, not a
+licence to re-fit the weight,'' and re-fitting on the 23 validation cases would have
+beaten our best submission by $+0.017$. Pre-registration is cheap to produce and its
+whole value is spent at the moment it forbids something. A result cannot surprise you
+if you never said what you expected, and it cannot stop you if you did not say what
+would count as failing.
 
 \paragraph{What this does not show.}
 None of the above is a controlled comparison. We ran one entry, with one model, one
@@ -158,23 +170,30 @@ lines of the scorer is the one that keeps optimising within the frame the scorer
 implies.
 
 % ---------------------------------------------------------------------------
-% INTEGRATION NOTE
+% INTEGRATION NOTE  (updated 7 Sep -- decision made)
 %
-% main.tex is exactly six body pages with references starting on p7; this
-% section measures 2.0 pages, so it cannot simply be \input{}.  Three options:
+% THIS SECTION DOES NOT SHIP in the challenge manuscript.  main.tex is now
+% exactly six body pages with references starting on p7 and roughly one line of
+% slack; this section measures 2.0 pages.  Fitting it would mean cutting the
+% Sect. 4 PI-RADS episode or the Sect. 5 intervention list, both of which carry
+% more evidence per line than anything here.  Held for the extended version.
 %
-% 1. Merge into Sect. 5, retitled "Where the Loop Needed a Human, and What It
-%    Bought".  Costs the most cutting but is the strongest structure: the two
-%    lists are complements and the closing paragraph above already argues so.
-% 2. Keep as its own section and cut for space.  The compressible parts are
-%    the pre-registration paragraph (~0.25pp, argued rather than measured)
-%    and the forensics prose after the table (~0.3pp).  The table and the
-%    78/22 split should not be cut -- that is the thesis measured against an
-%    independent system.
-% 3. Hold for the extended version, and land only the 78/22 table in Sect. 4,
-%    which costs ~0.35pp and carries most of the value.
+% Consequences of that decision, already applied to main.tex:
+%   - Sect. 5's "intervention 5 is mildest and most instructive" stands as
+%     written; it only needed rewording if this section shipped.
+%   - The PI-RADS episode is in Sect. 4 as its own paragraph ("The one time the
+%     fold was wrong"), and Sect. 5's synthesis names it as the same failure
+%     mode with no human present.  It is NOT numbered as a sixth intervention,
+%     because no human intervened -- the pre-registered floor did.
 %
-% Note also: if this section ships, Sect. 5's closing sentence calling
-% intervention 5 "mildest and most instructive" needs rewording, and the
-% still-open question of whether the PI-RADS finding is a sixth intervention
-% is partly answered here -- it appears above as the frame-reopening example.
+% The one piece worth landing in the manuscript if a page ever frees up is the
+% 78/22 decision-vs-reasoning split measured against the Sep 6 leaderboard
+% leader (~0.35pp): that is the thesis checked against an independent system,
+% and nothing else in main.tex does that job.  Note it uses another entrant's
+% metrics dump, which is gitignored and not ours to redistribute -- the numbers
+% may be quoted, the artefact may not.
+%
+% Corrected 7 Sep: the "Pre-registration became free" paragraph previously
+% cited S3's band as a success story.  S3 came in far below its floor and the
+% term was withdrawn at S4; the paragraph now reports that, which is the
+% stronger claim anyway.  Any future reuse of this text must keep it.

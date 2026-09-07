@@ -621,6 +621,37 @@ panel it falls to 0.7740, and GBM and random forest land at 0.6729 and 0.7151 �
 *below plain CAPRA-S*. Choosing the coefficients beats learning them at every level of
 model capacity we tried, so "nothing is fitted at inference" survives Item 11 intact.
 
+> **Correction, Sep 7 — the paragraph above is measured against a model we withdrew,
+> and does not hold for the one that ships.** Its comparisons are all against the
+> *three-input* ordering `capra_s + 0.99·cspca + 2.0·(pirads − 2)`, whose 0.7965 was the
+> bar. S3/S4 falsified that term on validation and S5 reverted to the two-input
+> ordering `capra_s + 0.99·cspca` (within-fold 0.7556, in-sample 0.7522). Re-running
+> `work/t3/compare.py` with the shipped model as the baseline — 20 seeds × 5 folds,
+> within-fold C-index, paired per-seed deltas:
+>
+> | model | within-fold | Δ vs ship | sd(Δ) | seeds > 0 |
+> |---|---|---|---|---|
+> | cox(capra_s + cspca) | 0.7668 | **+0.0113** | 0.0190 | 15/20 |
+> | cox(full 15-feature panel) | 0.7740 | +0.0184 | 0.0341 | 16/20 |
+> | cox(full, strong L2) | 0.7849 | +0.0293 | 0.0216 | 17/20 |
+> | ridge log-months (full) | 0.7551 | −0.0004 | 0.0348 | 8/20 |
+> | **capra_s + 0.99·cspca (shipped)** | **0.7556** | — | 0.0223 | — |
+> | capra_s alone | 0.7373 | −0.0183 | 0.0077 | 0/20 |
+> | RF log-months (full) | 0.7151 | −0.0404 | 0.0347 | 2/20 |
+> | GBM log-months (full) | 0.6729 | −0.0826 | 0.0445 | 1/20 |
+>
+> So **fitted Cox models are nominally ahead of what we ship**, and "choosing the
+> coefficients beats learning them at every level of model capacity" is false as
+> written. What survives is weaker and is the claim the manuscript now makes: the
+> margin is inside seed spread (Δ +0.0113 against sd 0.0190, 15/20 seeds) and inside
+> Item 7's own paired-bootstrap CI of [−0.0067, +0.0396], and every fitted model wins
+> the same way the withdrawn PI-RADS term did — **by reordering across CAPRA bands**,
+> which is exactly the transfer assumption Item 7 declined to make when it rejected the
+> higher-scoring `0.5·(capra/12) + 0.5·cspca` blend. **We refuse the fitted models on a
+> transfer argument, not on score.** `paper2/main.tex` Table 1 states it that way; a
+> claim that the folds beat them would be wrong. Tree/forest/GBM remain genuinely worse
+> and that part of the paragraph stands.
+
 **A harness defect this exposed, worth more than the score.** Pooled out-of-fold
 comparison is invalid for any model refitted per fold: each fold's coefficients carry
 their own scale, so cross-fold pairs compare two different rulers. The tell was a
