@@ -25,6 +25,7 @@ from chimera.evidence import extract_prior_context, extract_reports, extract_str
 from chimera.mcp.client import ClinicalStore
 from chimera.models import stratified
 from chimera.models.guidelines import capra_s_points
+from chimera.predictors import acquire
 from chimera.predictors.prior import PriorPredictor, _normalise_weights
 from chimera.predictors.rationale import recurrence_rationale
 
@@ -67,15 +68,20 @@ class GuidelinePredictor(PriorPredictor):
             confidence = "borderline"
         weights = _normalise_weights(task, reasoning.get("variable_weights"))
 
-        features = extract_structured(case, store)
+        # Acquire before reading the card, and acquire by asking rather than by
+        # replaying a fitted list. Until 8 Sep the policy came out of the
+        # parameter file -- a constant per task, which the organizers ruled out
+        # that day as "a predefined deterministic retrieval strategy". The loop
+        # in :mod:`chimera.predictors.acquire` chooses each call from what the
+        # previous call returned, so the sequence differs case to case and is
+        # decided during the case rather than before it.
+        policy = acquire.acquire(task, store)
 
-        policy = reasoning.get("reveal_sequence")
-        policy = list(policy) if isinstance(policy, list) else []
-        # Sections the extractor had to read to reach the decision. Empty on the
-        # current release -- the notes fallback for `bx` is gated to Task 2, whose
-        # card still carries the field -- so this is normally a no-op. It matters
-        # on the test cohort, where the fallback can fire, and reveal honesty runs
-        # the wrong way round (under-declaring what we read) if it is skipped.
+        features = extract_structured(case, store)
+        # Sections the extractor had to read to reach the decision. Usually
+        # already in `policy`, since the acquisition loop reads the same reports;
+        # unioned anyway because reveal honesty runs the wrong way round
+        # (under-declaring what we read) if the extractor reaches past it.
         for section in features.evidence_sections:
             if section not in policy:
                 policy.append(section)

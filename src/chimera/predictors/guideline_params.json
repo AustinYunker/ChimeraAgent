@@ -1,5 +1,6 @@
 {
   "_comment": "Fitted by chimera.cli.fit_models. Do not hand-edit; re-run the fit. leaf_labels map guideline strata to decisions and were chosen against the official ranking metric, not accuracy. cv_* are repeated pooled out-of-fold estimates; cv_sd is the spread across split seeds and a difference smaller than it is not evidence.",
+  "_comment_reveal_sequence": "Deliberately absent from every task1/task2 reasoning leaf, and removed by hand on 8 Sep. The fit (chimera.models.stratified.fit) still searches reveal sets jointly with variable_weights, because grounding depends on both, so a re-run will write the key back; delete it again. GuidelinePredictor has not read it since 8 Sep -- retrieval is chosen per case by chimera.predictors.acquire from what each call returns, which is what the organizers require and what a fitted per-leaf list is not. A stale key here changes no output, but it reads as the live policy and it is not one. The fitted variable_weights below were chosen against the reveal sets this key used to name; they were not refitted against the dynamic policy, so they are no longer jointly optimal. That is a known, measured cost (-0.0216 overall), not an oversight.",
   "task1": {
     "available_sections": [
       "radiology_report",
@@ -21,9 +22,6 @@
     "reasoning": {
       "__default__": {
         "confidence": "clear",
-        "reveal_sequence": [
-          "radiology_report"
-        ],
         "variable_weights": {
           "age": "important",
           "bx": "important",
@@ -39,9 +37,6 @@
       },
       "no": {
         "confidence": "clear",
-        "reveal_sequence": [
-          "radiology_report"
-        ],
         "variable_weights": {
           "age": "important",
           "bx": "important",
@@ -57,9 +52,6 @@
       },
       "yes": {
         "confidence": "clear",
-        "reveal_sequence": [
-          "radiology_report"
-        ],
         "variable_weights": {
           "age": "important",
           "bx": "important",
@@ -100,7 +92,6 @@
     "reasoning": {
       "__default__": {
         "confidence": "clear",
-        "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
           "bx_gl_prim": "noted",
@@ -117,7 +108,6 @@
       },
       "active_surveillance": {
         "confidence": "clear",
-        "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
           "bx_gl_prim": "noted",
@@ -134,7 +124,6 @@
       },
       "active_treatment": {
         "confidence": "clear",
-        "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
           "bx_gl_prim": "noted",
@@ -151,7 +140,6 @@
       },
       "continued_surveillance": {
         "confidence": "clear",
-        "reveal_sequence": [],
         "variable_weights": {
           "age": "important",
           "bx_gl_prim": "not_used",

@@ -404,9 +404,21 @@ def test_guideline_params_are_well_formed():
         # to an arbitrary one at inference.
         assert set(labels) == set(LEAVES_BY_TASK[task])
         assert set(labels.values()) <= set(allowed)
-        for reasoning in entry["reasoning"].values():
+        for leaf, reasoning in entry["reasoning"].items():
             assert reasoning["confidence"] in spec.CONFIDENCE_LEVELS
-            assert set(reasoning["reveal_sequence"]) <= set(spec.REVEAL_SECTIONS)
+            # No fitted retrieval policy may sit in the shipped parameter file.
+            # Until 8 Sep each leaf carried a `reveal_sequence` -- a constant per
+            # task, which the organizers ruled out that day as "a predefined
+            # deterministic retrieval strategy". Retrieval now comes from
+            # `chimera.predictors.acquire`, which chooses each call from what the
+            # previous one returned. The key is dead if present, so this asserts
+            # absence rather than validity: `stratified.fit` still searches reveal
+            # sets and will write it back on a re-run, and a stale list here reads
+            # as the live policy to anyone auditing the repo.
+            assert "reveal_sequence" not in reasoning, (
+                f"{task}/{leaf} carries a fitted reveal policy; "
+                "delete it -- acquire.py decides retrieval per case"
+            )
 
 
 @pytest.mark.parametrize("task", [1, 2, 3])
