@@ -897,6 +897,23 @@ recover some grounding; it was not done, two days from a one-shot deadline, on a
 whose whole purpose is to remove a qualification risk rather than to score. The cost is
 inside the −0.0216 above, not on top of it.
 
+#### The artefact
+
+Tag `v0.7.0`, commit `614f49c2935162822ae4cbca616c67728b4e3f56`. Built by `build-image`
+run #12, conclusion **success** — the image built, the smoke test ran one container per
+fixture case offline and non-root under Grand Challenge's mounts, and the in-image
+assertion found both fitted parameter files reachable. `ci` run #23 on the same commit
+also passed. The artifact is **`chimera-agent-614f49c29351`** (53,016,365 bytes, created
+2026-09-08T14:58:46Z, retained to 2026-10-08), at
+`https://github.com/AustinYunker/ChimeraAgent/actions/runs/34241687711`.
+
+The name embeds the commit SHA and matches `git rev-parse v0.7.0^{commit}` exactly. That
+is the only link in the chain this host can check — unpacking the tarball to compare it
+against the source needs a container runtime we do not have — and it is the link S5
+established is trustworthy. The artefact is pinned to the tag, so later commits on
+`master` do not change it. **Upload this one; `chimera-agent-44c094ad3793` is superseded
+and must not be submitted.**
+
 #### Stop rule
 
 There is no slot to diagnose with. If the test result deviates from roughly
