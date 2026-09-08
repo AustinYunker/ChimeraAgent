@@ -1,4 +1,24 @@
-# Draft: email to the CHIMERA-agent organizers
+# Correspondence with the CHIMERA-agent organizers
+
+**Letter 1 — sent 29 Aug.** Reproduced below unchanged, as the record of what was
+asked. Answered since:
+
+- **Q2 (does a deterministic MCP orchestrator qualify?)** — answered **no**, on
+  8 Sep. Quoted in full in [`plan.md`](plan.md) and in the docstring of
+  `chimera/predictors/acquire.py`; the operative sentence is that "a predefined
+  deterministic retrieval strategy, such as an if/else policy that decides the
+  sequence of sections in advance, would not meet the intended agentic setup".
+  Implemented the same day — see Letter 2 below, which reports what complying
+  cost and why the cost is a property of the metric rather than of our entry.
+- **Q5 (is the judge live?)** — answered by the debug metrics dumps, not by the
+  organizers; `mean_rationale_score` is non-null throughout. The question was
+  left in the sent letter because the bug reports under it still stand.
+
+**Letter 2 — drafted 8 Sep, unsent.** At the foot of this file.
+
+---
+
+## Letter 1 (sent 29 Aug)
 
 To: nadieh.khalili@radboudumc.nl
 Subject: CHIMERA-agent: questions on the MCP requirement and Task 1 grounding, plus evaluator and judge bug reports
@@ -178,3 +198,118 @@ With best regards,
 
 Austin M Yunker
 Loyola University Chicago
+
+---
+
+## Letter 2 (drafted 8 Sep — **unsent**)
+
+To: nadieh.khalili@radboudumc.nl
+Subject: CHIMERA-agent: we have implemented the MCP ruling — one measurement it turned up on Task 2
+
+---
+
+Dear Dr Khalili and the CHIMERA-agent team,
+
+Thank you for the ruling on agentic retrieval. We have implemented it: as of
+today our entry chooses each MCP call from the content the previous call
+returned, so the sequence differs case to case and is decided during the case
+rather than before it. Across the 163 labelled Task 1 and Task 2 training cases
+it produces four distinct retrieval patterns on Task 1 and three on Task 2, and
+no case reaches a decision without calling the server. Previously Task 2 made no
+calls at all, which we agree was not in the spirit of the challenge.
+
+We are writing because implementing it produced a measurement we think you will
+want before the test phase closes. It concerns the released ground truth rather
+than our entry, and we would raise it identically if it had gone the other way.
+
+**On Task 2 the metric scores the required behaviour at exactly zero.**
+
+Every released Task 2 reference rationale has an empty `reveal_sequence` — all
+72 labelled cases, in both `train_release` and `train_release_v2` (144 files,
+zero exceptions). Since `cost_aware_tool_score` is
+`|agent ∩ reference| / |agent|`, any non-empty declaration on Task 2 has an
+empty intersection and scores **0.0**, while declaring nothing scores **1.0**.
+
+Running the released `evaluate.py` over our own before-and-after outputs, with
+the decisions held byte-identical so the only variable is retrieval:
+
+| Task 2, 72 cases        | before (no calls) | after (agentic) |
+|-------------------------|-------------------|-----------------|
+| `mean_tool_score`       | 1.0000            | **0.0000**      |
+| `mean_section_grounding_score` | 0.2180     | 0.8910          |
+| `mean_case_score`       | 0.6398            | 0.6121          |
+| `ranking_score`         | 0.7444            | 0.7305          |
+
+Grounding rises sharply, as it should — we now actually read the sections the
+variables come from — but at the live component weights it recovers only about a
+third of what the tool term takes away. Complying costs us $-0.0139$ of Task 2
+ranking score and $-0.0216$ overall at the weights the leaderboard uses. We are
+not asking for that back; we raise it because of what produces it.
+
+**The consequence we think matters is the absent gradient, not the level.**
+
+Because the numerator is zero for every non-empty declaration, *all* non-empty
+declarations score identically on Task 2. A single, well-chosen call and an
+indiscriminate sweep of all six sections receive the same 0.0 — and the sweep
+then scores strictly higher on `section_grounding_score`. On Task 2 the metric
+therefore has a mild preference for retrieving **everything** over retrieving
+what the case needs, which we take to be the opposite of what a term named
+`cost_aware` is for. An entry optimising the metric as released would either
+declare nothing (now ruled out) or retrieve indiscriminately; targeted retrieval
+is the one strategy that is dominated.
+
+Task 1 shows a milder version of the same shape. There the references are
+generous — 178 of 182 are non-empty and the modal set is four sections — so a
+selective agent is penalised only for the calls it makes that the urologist did
+not: our Task 1 `mean_tool_score` falls 0.9846 → 0.9128 purely from becoming
+selective, with grounding unchanged at 0.6747. Since the component is precision
+with no recall term, its maximum on Task 1 is still reached by retrieving as
+little as possible.
+
+**A fix with precedent inside your own scorer.** The release notes describe
+Task 2's `reveal_sequence` as "currently unavailable", which we read as *not
+recorded* rather than *recorded as empty*. If so, the natural treatment is the
+one `section_grounding_score` already applies to `comorbidity`: drop the
+component from the denominator when the reference cannot grade it, rather than
+scoring it 0.0. That would leave Task 1 unchanged and make Task 2 neutral on
+retrieval instead of adversarial to it. Adding a recall term, or scoring an
+empty agent declaration as 0.0 against a non-empty reference, would address the
+Task 1 half; we noted both in our August letter and they still apply.
+
+We have kept our entry on the compliant behaviour regardless of how this is
+resolved, and the empty declaration remains weakly dominant for anyone who has
+not read the ruling. We would rather the metric did not reward that.
+
+**One point of confirmation.** Our reading is that the `reveal_sequence` we
+declare must be exactly the set of sections our MCP calls actually returned, and
+that declaration *order* is not scored — `cost_aware_tool_score` compares sets.
+Our declaration is in the order our agenda opened the questions, which is not
+always the order the calls went out, because a section can be read twice and the
+client memoises. If order is meant to carry information we will emit call order
+instead; please say so and we will change it before the test submission.
+
+Happy to supply case IDs, the two run directories, or a minimal reproduction of
+the table above.
+
+With best regards,
+
+Austin M Yunker
+Loyola University Chicago
+
+---
+
+### Notes for the sender, not part of the letter
+
+- Numbers are the released `evaluate.py` with the judge off, so they are
+  reproducible by the organizers without an API key. The $-0.0216$ overall is
+  the live-weight (judge-on) repricing; the judge-off overall move is $-0.0071$,
+  the difference being that grounding carries 0.175 with the judge off and 0.05
+  with it on, so the grounding recovery is worth much less on the leaderboard
+  than the table alone suggests. Say "at the weights the leaderboard uses" and
+  do not quote $-0.0071$ unless asked, or the two figures will look inconsistent.
+- The order question at the end is worth asking now rather than after the test
+  phase: it is the one remaining way our declaration could be judged
+  non-conforming, it costs nothing to change, and we cannot test it ourselves.
+- Do **not** add the `reason`-field leak (Letter 1 §5 territory) to this letter.
+  It is a separate report and pending its own reply; mixing a courtesy
+  measurement with a security-shaped disclosure buries both.

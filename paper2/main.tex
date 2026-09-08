@@ -107,10 +107,10 @@ version a clinician can check without running a judge.
 
 Three parts apply in order to the structured patient card. A \emph{stratifier} maps
 the case to a guideline leaf and looks up its decision; an \emph{acquirer} retrieves
-over MCP the record sections that decision requires, appending each to a ledger; a
-\emph{narrator} writes the rationale from that evidence, and \code{reveal\_sequence}
-is emitted from the ledger. Nothing is learned end-to-end and no component is a
-language model.
+record sections over MCP, choosing each call from what the previous one returned and
+appending it to a ledger; a \emph{narrator} writes the rationale from that evidence,
+and \code{reveal\_sequence} is emitted from the ledger. Nothing is learned end-to-end
+and no component is a language model.
 
 \paragraph{Stratification.}
 Task~1 is stratified on PI-RADS~\cite{pirads} alone into \{\code{high} ($\geq 4$),
@@ -125,14 +125,14 @@ against the reasoning behind it.
 
 \paragraph{Acquisition and reveal honesty.}
 \code{reveal\_sequence} is self-reported and the evaluator never inspects MCP traffic,
-so a declared retrieval scores whether or not it happened; we treat this as a
-constraint, not an opportunity. Our MCP client appends every successful section read
-to a per-case ledger and emits the declaration \emph{from} that ledger, so a section
-can be declared only if a tool call returned it: reveal honesty is structural,
-not a maintained convention, and we optimise which evidence to \emph{acquire}, not
-what to claim. Client and server are hand-rolled over the standard library --- the
-official SDK's dependencies do not fit the offline image --- and tested for
-conformance against the reference client.
+so a declared retrieval scores whether or not it happened. Our client appends every
+successful section read to a per-case ledger and declares \emph{from} that ledger, so a
+section can be declared only if a tool call returned it: reveal honesty is structural,
+not a maintained convention. What to acquire is not fitted but clinical: an agenda of
+open questions re-derived from the text after every call. Client and server are
+hand-rolled over the standard library, the official SDK's
+dependencies not fitting the offline image, and conformance-tested against the
+reference client.
 
 \paragraph{Narration.}
 Two properties of the judge determine the rationale's wording, neither guessable from
@@ -179,8 +179,8 @@ Proposed component & Ships & What decided it \\
 \midrule
 LLM writer for the rationale & no &
   templated text scored as well; see below \\
-Selector over $2^6$ reveal subsets & no &
-  in-sample bound ${<}0.005$; zero out of fold \\
+Selector over $2^6$ reveal subsets & part &
+  in-sample ${<}0.005$; $\emptyset$ shipped, then ruled out \\
 Per-case confidence models & no &
   a constant is the cross-validated optimum \\
 Task~1 GBM $+$ MRI embedding & no &
@@ -188,8 +188,8 @@ Task~1 GBM $+$ MRI embedding & no &
 Task~2 learned residual & part &
   guideline kept, residual removed: six leaf labels \\
 Task~3 fitted survival regression & no &
-  Cox is $+.011$ out of fold, inside seed spread and only by reordering across
-  CAPRA bands: refused on transfer, not score \\
+  Cox is $+.011$ out of fold, inside seed spread and only by reordering
+  across CAPRA bands \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -207,21 +207,20 @@ components sit at their practical ceiling --- an in-sample bound under $+0.005$
 overall, zero out of fold --- leaving little for a generative component to win back.
 (ii)~The offline image could not carry the MCP SDK's dependency tree, let alone model
 weights. (iii)~The plan gated the LLM writer on a question put to the organizers on
-29~August and directed that the deterministic pipeline ship if no answer came before
-validation opened; none came, and the component lapsed by that default. Measurement
-made retiring the language model \emph{safe}; a deadline and an unanswered e-mail made
+29~August, to ship the deterministic pipeline if no answer arrived before validation
+opened; none did in time, and the component lapsed by that default. Measurement made
+retiring the language model \emph{safe}; a deadline and a then-unanswered e-mail made
 it \emph{happen} --- an agent's process has deadline-driven defaults able to decide an
 architecture.
 
 \paragraph{The tree the agent authored beats the forest it did not fit.}
-The stratifier is a decision tree with an authored topology and fitted leaf labels,
-which invites the obvious comparison. Under $6\times5$ repeated stratified
-cross-validation, re-fitting the nine labels inside each fold so every row is out of
-sample, the authored tree wins on both tasks and the random forest is runner-up on
-neither (Table~\ref{tab:models}). Two reasons are instructive. On Task~1 a
-\emph{fitted} depth-1 stump picks PI-RADS as its root on only 17 of 30 folds,
-preferring \code{cspca} (8), \code{vol} (4) and \code{psad} (1) --- cardinality bias,
-since four-level PI-RADS offers three thresholds where continuous PSA offers ninety.
+The stratifier is a decision tree with an authored topology and fitted leaf labels.
+Under $6\times5$ repeated stratified cross-validation, re-fitting the nine labels
+inside each fold so every row is out of sample, the authored tree wins on both tasks
+and the random forest is runner-up on neither (Table~\ref{tab:models}). Two reasons
+are instructive. On Task~1 a \emph{fitted} depth-1 stump picks PI-RADS as its root on
+only 17 of 30 folds, preferring \code{cspca} (8) and \code{vol} (4) --- cardinality
+bias, four-level PI-RADS offering three thresholds where continuous PSA offers ninety.
 On Task~2 a depth-3 tree nearly recovers the EAU structure ($0.8361$) but bagging
 destroys it ($0.7222$): the rule is a sharp conjunction, and averaging 500 trees
 smooths thresholds that should not be.
@@ -284,8 +283,8 @@ thing and carried an interval committed beforehand, which is what makes the fail
 below readable. S2 matters for \emph{how} it was validated rather than for its size:
 we pre-registered $+0.046$ to $+0.057$ and realised $+0.0705$, \emph{above} the band.
 Which cases moved shows the mechanism right and the magnitude wrong: exactly six
-changed, all six had been wrong, all six moved to the ground-truth label, and the
-per-case price was predicted to within 6\%. Only the leaf's prevalence was
+changed, all six from wrong to the ground-truth label, at a per-case price predicted
+to within 6\%. Only the leaf's prevalence was
 underestimated --- three times commoner in validation (6/36) than training (4/72) ---
 so a test cohort resembling training yields roughly $+0.024$; we regard that
 projection, not the leaderboard delta, as the result.
@@ -307,14 +306,14 @@ would have beaten our best submission by $+0.017$; the pre-registration forbade 
 and the sweep is non-monotone anyway --- pair flips on seven events, not an optimum.
 
 The system is small: three dependencies installed \code{--no-deps}, no weights, 40
-modules under 1\,MB, 263 tests covering MCP conformance, evaluator parity to
+modules under 1\,MB, 284 tests covering MCP conformance, evaluator parity to
 $10^{-9}$, and no outbound connection.
 
 \section{Where the Loop Needed a Human}
 \label{sec:human}
 
 Every point at which the human changed the trajectory --- what a leaderboard number
-hides. They fall into a pattern.
+hides.
 
 \begin{enumerate}
 \setlength{\itemsep}{0pt}\setlength{\parsep}{0pt}\setlength{\topsep}{3pt}
@@ -350,26 +349,26 @@ the manuscript requirement is not in the metric. Intervention~5 is mildest and m
 instructive: the loop tested its hypotheses rigorously and never generated the standard
 baseline --- thoroughness within a frame is not questioning the frame.
 
-\paragraph{A property of the metric, reported rather than exploited.}
+\paragraph{A property of the metric, which caught us anyway.}
 \code{cost\_aware\_tool\_score} (weight $0.15$) is a precision, $|A \cap R|/|A|$,
-returning $1.0$ when $A = \emptyset$: under-retrieval is never penalised and the empty
-declaration is \emph{weakly dominant} --- an agent that reads nothing scores at least
-as well as one retrieving exactly what the urologist did. Its intended counterweight,
-\code{section\_grounding\_score}, carries only $0.05$ and is bounded; our scores show
-tool $1.000$ against Task~2 grounding $0.223$, a floor rather than headroom. The rule
-fixed at the outset --- choose the policy first, actually retrieve, declare from the
-ledger --- forecloses the exploit, and we report the property rather than use it. The
-fix is to score evidence \emph{acquired} rather than \emph{declared}: a server can
-check it, and it costs an honest entry nothing.
+returning $1.0$ when $A = \emptyset$: the empty declaration is \emph{weakly dominant}.
+We reported it rather than build on it --- and shipped it anyway: the reveal-set fit
+returned $\emptyset$ on every Task~2 leaf, banking tool $1.000$ for no call at all.
+Declaring honestly says nothing about what a fit converges on. The organizers ruled a
+policy fixed in advance out on 8~September, and complying is priced --- Task~2's
+reference \code{reveal\_sequence} is empty on all $72$ cases, so real retrieval scores
+$0.000$: tool $1.000 \to 0.000$, grounding $0.218 \to 0.891$, $-0.022$ overall. The
+metric pays its maximum for what the rules forbid; the fix is to score evidence
+\emph{acquired}, not \emph{declared} --- server-checkable, and free to an honest entry.
 
 \section{Limitations and Conclusion}
 
 \paragraph{Limitations.} This is $n=1$: one challenge, one agent, one model, one human,
 no control arm. The agent's contribution is not separable from the model's prior
-knowledge of prostate-cancer guidelines or from the interventions above; the audit
-trail makes the process inspectable, not controlled. The system is also underpowered
-clinically --- Task~1's errors concentrate in prior-positive biopsy patients at high
-PI-RADS, a subgroup near 50/50 that no model in Table~\ref{tab:models} separates.
+knowledge of prostate-cancer guidelines or from the interventions above --- the audit
+trail makes the process inspectable, not controlled. It is also underpowered
+clinically: Task~1's errors concentrate in prior-positive biopsy at high PI-RADS, a
+subgroup near 50/50 that no model in Table~\ref{tab:models} separates.
 
 \paragraph{Conclusion.} An agent asked to build an agent for a benchmark that scores
 reasoning planned to use a language model and, over 27 days of measuring its own
