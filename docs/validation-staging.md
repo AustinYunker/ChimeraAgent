@@ -829,3 +829,76 @@ could have answered, which was the rule this document opened with.
   finding. Item 6's 0.736 is measured over all 91 labelled Task 1 cases and tied exactly
   by a per-stratum oracle; four cases drawn from that same cohort cannot overturn it, and
   the two that hurt are the tail the constant is already known to pay for.
+
+## The test submission — C7, Sep 10, one shot
+
+Validation is closed and this section is not a slot. It records the freeze, because
+the artefact going to test is **no longer** the one S5 cleared.
+
+#### What changed after S5, and why
+
+`v0.6.2` / `44c094a` was cleared on Sep 7 and superseded on Sep 8 by the organizers'
+ruling that retrieval must be "made dynamically by the agent based on the case and the
+information available at that point", and that "a predefined deterministic retrieval
+strategy, such as an if/else policy that decides the sequence of sections in advance,
+would not meet the intended agentic setup". Every submission through S5 declared a
+fitted per-task constant out of `guideline_params.json`. That is the thing named.
+
+`v0.7.0` replaces it with `chimera.predictors.acquire`: an agenda of open clinical
+questions re-derived from the report text after every call. This is a compliance
+change, not an improvement, and it was taken knowing the price.
+
+#### The price, measured on the official evaluator
+
+Judge-off, over the full 423-case cohort, `compl-base` (v0.6.2) → `compl-v2` (v0.7.0):
+
+| | Task 1 | Task 2 | Task 3 |
+|---|---|---|---|
+| ranking_score | .6896 → .6857 | .7444 → .7305 | .7522 unchanged |
+| mean_tool_score | .9846 → .9128 | 1.0000 → **0.0000** | — |
+| mean_section_grounding | .6747 unchanged | .2180 → .8910 | — |
+| decision_accuracy | .7143 unchanged | .8611 unchanged | — |
+
+Overall .7240 → .7169 judge-off; **−0.0216 at live judge-on weights**, where grounding
+carries 0.05 rather than 0.175 and so cannot pay back what the tool component loses.
+
+Task 2 carries almost all of it, for a structural reason: the reference
+`reveal_sequence` is empty on **all 144 released Task 2 reasoning files across 72
+distinct cases**, in both `train_release` and `train_release_v2`. `cost_aware_tool_score`
+is `|A ∩ R| / |A|`, so with `R = ∅` every non-empty declaration scores exactly 0.0 and
+they all tie there. Complying costs the maximum the component can charge, and there is
+no gradient left inside it to recover any of it. Letter 2 in `docs/organizer-email.md`
+reports this; it is unsent as of the freeze.
+
+#### What was verified, since no validation slot can check it
+
+- **Reveal honesty, 423/423 cases over the real `McpSession` transport, 0 violations**
+  of `set(declared) == set(store.retrieved)`. The declaration is the ledger of calls
+  that returned data, so under-declaring and over-declaring are both unreachable.
+- **The sequence is genuinely case-dependent**: 4 distinct Task 1 patterns and 3 Task 2
+  patterns over the cohort, and no case retrieves nothing. Two cases identical in every
+  structured field take different paths when their reports differ — `tests/test_acquire.py`
+  holds that as the smallest witness of the requirement.
+- **Task 3 and every decision are bit-identical.** 150 recurrence files, zero differ;
+  zero decision files differ. Only reasoning traces move. `stratified.predict_decision`
+  runs *before* retrieval, so this is structural, not luck.
+- **The parameter-file cleanup is inert.** `compl-v3` (dead `reveal_sequence` keys
+  deleted) is byte-identical to `compl-v2`.
+- **End-to-end through `inference.py`**, one invocation per case as the platform does:
+  423/423 succeeded natively, each over the real MCP server per its own log, and
+  `check_outputs` reports all 423 produce sockets the evaluator would score.
+
+#### Known and accepted
+
+`stratified.fit` co-optimises `variable_weights` with the reveal sets, because grounding
+depends on both. The shipped weights were fitted against the *old* sets and are
+therefore no longer jointly optimal. Refitting them against the dynamic policy could
+recover some grounding; it was not done, two days from a one-shot deadline, on a change
+whose whole purpose is to remove a qualification risk rather than to score. The cost is
+inside the −0.0216 above, not on top of it.
+
+#### Stop rule
+
+There is no slot to diagnose with. If the test result deviates from roughly
+`0.8061 − 0.022`, that is information about the test cohort, not a licence to change
+anything: nothing can be changed after Sep 10.
