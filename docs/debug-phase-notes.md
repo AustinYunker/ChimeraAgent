@@ -669,3 +669,95 @@ And the counterfactuals on `ranking_score`, currently **0.6569**:
 gate failure zeroes the case *and* halves the `no` recall that feeds `task_f1`. The judge
 is the loudest signal in the file and the smallest one. n=4, so this is a direction and
 not a measurement — but it is the same direction Item 6 found at n=91.
+
+## Fifth debug submission (v0.7.0, Sep 8) — `debug_metrics_mcp.json`
+
+The first platform run of the dynamic acquirer. Submitted to see the compliance change
+land on the organizers' own scorer, not to learn anything about score: these are twelve
+of our training cases and the standing rule against tuning on them holds.
+
+### Task 1 is unchanged, to the digit
+
+`ranking 0.6569`, rationale `0.5333`, grounding `0.6825`, tool `1.0000`, the gate failure
+on `1dc32184cab6`, both `uncertain` cases at confidence `0.0`. Every one of these is the
+v0.4.1 figure decomposed above. Four code versions and two retrieval policies later, the
+platform returns the identical Task 1 file.
+
+That is worth more as a control than as a result. Locally, `reveal_sequence` is the
+**only** field that differs anywhere between `v0.6.2` and `v0.7.0` — 309 reasoning files
+differ, all 309 have byte-identical `free_text`, `confidence`, `variable_weights` and
+factors. The platform agreeing to the digit is that claim confirmed from outside.
+
+Grounding not moving is the same structural fact recorded for the 423-case run: the extra
+Task 1 sections ground nothing, because the variables they would ground (`bx`, `dre`,
+`fh`) have no primary section Task 1 serves, and `psa`/`age` are always-available.
+
+### The judge's phantom ISUP recurs, and the sibling-card trace holds
+
+Three of four Task 1 comments again cite `ISUP grade group 1 (Gleason 3+3)` as
+hallucinated. `PT-pseudo_0020cfca66c8`'s own `free_text` is
+
+> MRI PI-RADS 2, unlikely to harbour clinically significant disease, PSA 4.7 ng/mL
+> (density 0.14) and a previously diagnosed prostate cancer. …
+
+— no `ISUP`, no `Gleason`, no grade anywhere in the file. Its sibling `T2-001` emits
+`ISUP grade group 1 (Gleason 3+3)` verbatim, and remains the only occurrence of that
+grade in the batch. Nothing new; the fifth submission simply reproduces it, and the case
+IDs to report are the ones already listed.
+
+Our own contribution to the confusion is worth stating separately, because it is ours to
+fix and the sibling leak is not: **146 of 195 Task 1 rationales carry the clause "Neither
+the earlier biopsy's ISUP grade nor any comparison with prior imaging is reported."** A
+negative disclosure names the term it denies, which is a poor bet against an LLM judge.
+On S2's 50 validation cases the judge tripped on it once; here, three times in four. n=4
+against n=50, so this is a hypothesis and the cheaper reading is still the sibling leak —
+but if the clause were dropped, both explanations would stop costing anything. Not now:
+the artefact is frozen and these are training cases.
+
+### Task 2 is the new information, and it landed where it was priced
+
+| | S2 validation (v0.5.0, n=36) | here (v0.7.0, n=4) |
+|---|---|---|
+| `mean_tool_score` | 1.0000 | **0.0000** |
+| `mean_section_grounding_score` | 0.2227 | **0.8786** |
+| `mean_rationale_score` | 0.8588 | 0.9500 |
+| `decision_accuracy` | — | 1.0000 (4/4) |
+| `ranking_score` | — | 0.8745 |
+
+Different cohorts and n=4, so only the two structural rows are readable: tool went to
+exactly zero and grounding to the high eighties, which is the trade recorded for the
+423-case run (`0.2180 → 0.8910`). `fh` is the sole remaining ungrounded variable on all
+four cases — `family_history` is the one section the agenda never has a question for.
+
+### The platform echoes our reveal set back, and it matches
+
+`cost_aware_tool_score`'s `reason` field lists `extra_keys`, which is our declaration:
+
+| case | platform `extra_keys` | local `reveal_sequence` (agenda order) |
+|---|---|---|
+| `T2-001` | path, prev, psa, rad | path, rad, psa, prev |
+| `T2-017` | path, prev, rad | path, rad, prev |
+| `T2-021` | path, prev, psa, rad | path, rad, psa, prev |
+| `T2-044` | path, prev, psa, rad | path, rad, psa, prev |
+
+Set-identical on all four, and the ledger check `set(declared) == set(store.retrieved)`
+passes on all four locally. This is the **first external corroboration of reveal
+honesty** — every previous check was our own code checking itself.
+
+It also puts the compliance property in the organizers' own output: `T2-017` retrieves
+three sections where the others retrieve four, because its specimen is ISUP 2 and the
+agenda closes the kinetics question above ISUP 1. The sequence is visibly a function of
+what a previous call returned, which is exactly what the 8 Sep ruling asks to see, and
+what a per-task constant could not have shown.
+
+The platform reports only precision and an unordered `extra_keys`, so this run says
+nothing about whether declaration **order** is scored. That question is still open and is
+the one Letter 2 asks.
+
+### Nothing here changes the artefact
+
+`0.8126` overall is twelve training cases with a C-index of 1.0 on four Task 3 rows; it
+is not a number to read. `T3-001` scores `0.06` on its case components while the task
+ranks at 1.0, which is the design working as described — Task 3 ranks on C-index alone.
+The `reason` field again leaks the reference rationale verbatim ("Priads 2 with only
+sightly elevated PSA") and the reference confidence; still unreported, still on the list.
