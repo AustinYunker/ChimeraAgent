@@ -18,8 +18,9 @@ required for ranking". The challenge site splits those, and the split matters:
 
 - The **manuscript is the ranking gate** — the submission page calls a "6-page
   method description paper" in the "MICCAI Springer LNCS template, excluding
-  references" *mandatory to qualify for the final ranking*. Drafted in
-  [`paper/`](../paper/); see [`paper/main.tex`](../paper/main.tex).
+  references" *mandatory to qualify for the final ranking*. The submitted
+  manuscript is [`paper2/main.tex`](../paper2/main.tex); [`paper/`](../paper/) is
+  the earlier system-description draft it replaced.
 - The **public repo is only a prize gate**. The rules page accepts "a public *or
   private* GitHub URL with the algorithm's source code, released under a permissive
   license", and the submission page says open-sourcing "is encouraged rather than

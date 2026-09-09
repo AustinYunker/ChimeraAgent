@@ -109,3 +109,10 @@ paper2/*.synctex.gz
 # another entrant's generated text, and they quote clinical values from the
 # validation cases. Not ours to redistribute, and not ours to mine.
 /best_val_metrics_sep_6.json
+/debug_metrics_mcp.json
+# Enumerating each dump by name is deliberate -- it documents what was pulled down
+# and when. But the list is only as good as the last person to remember it, and the
+# repo is public, so these two globs are the backstop: any future dump matching the
+# naming convention stays out even if nobody edits this file.
+/metrics_*.json
+/*_metrics_*.json

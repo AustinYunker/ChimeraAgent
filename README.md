@@ -5,8 +5,10 @@ prostate-cancer decision support across three tasks, where every prediction must
 be accompanied by a structured reasoning trace that is itself scored.
 
 Full strategy, checkpoints and timeline: [`docs/plan.md`](docs/plan.md).
-Method description paper (6-page LNCS): [`paper/`](paper/) — build with
-`cd paper && ./fetch-template.sh && make`.
+Method description paper (6-page LNCS): [`paper2/`](paper2/) — build with
+`cd paper2 && ./fetch-template.sh && make`. This is the submitted manuscript.
+[`paper/`](paper/) is the earlier system-description draft it replaced, kept for
+the record; it describes the same code but not the same argument.
 
 ## Data, licensing and embargo
 
